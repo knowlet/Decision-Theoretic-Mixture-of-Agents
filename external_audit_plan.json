@@ -1,0 +1,10 @@
+{
+  "status": "Post-primary exploratory audit, specified after first external policy results; never rewrites primary scores or hyperparameters",
+  "mmlu_reference": "cais/mmlu@c30699e8356da336a370243923dbaf21066bb9fe/all/test-00000-of-00001.parquet",
+  "mmlu_sha256": "74a41822ce7d3def56e1682f958469c04642a5336a5ce912fa375fdb90fb25d7",
+  "matching": "Exact normalized subject, question and ordered choices; ambiguous gold and unmatched rows excluded only from secondary audit with counts",
+  "regrading": "Strict response-only prefix parser against independent benchmark answer; same frozen primary actions; no gold passed to policy",
+  "five_shot_sha256": "fbd7d3d16fba2759a18fa0ad44409d3e0e92ba80d03d90827eed1a6d084c9ffe",
+  "shift": "Freeze zero-shot policies and development choices; join five-shot only to zero-shot held-out target sample identifiers; use original group assignment",
+  "caveat": "Few-shot demonstration overlap not audited; cross-shot test is target-held-out, not a claim that all demonstrations are held out"
+}
