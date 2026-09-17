@@ -1,0 +1,79 @@
+name: External validity replay
+on:
+  push:
+    branches: [develop]
+    paths: ['.github/workflows/external.yml', 'external*.py', 'test_external.py', 'external*.json', 'requirements-external.txt', 'build_external_paper.py', 'package_external.py']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: external-validity-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  external:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      PYTHONHASHSEED: '0'
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Materialize audited external sources once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! test -f external_replay.py; then
+            python - <<'PY'
+          import base64,hashlib,io,json,pathlib,subprocess,tarfile
+          obj=json.loads(subprocess.check_output(['gh','api','repos/knowlet/Decision-Theoretic-Mixture-of-Agents/git/blobs/4866658d3019b28c78a0cd9e879117cb0b28d9d4']))
+          data=base64.b64decode(obj['content'])
+          assert hashlib.sha256(data).hexdigest()=='a565f48bac5e2032353e1facd5a8ffb9b1f766f4c6a16b33b526c22ba98622fd'
+          with tarfile.open(fileobj=io.BytesIO(data),mode='r:xz') as archive:
+              for m in archive.getmembers():
+                  p=pathlib.PurePosixPath(m.name)
+                  assert not p.is_absolute() and '..' not in p.parts and '.git' not in p.parts and m.isfile()
+              archive.extractall('.',filter='data')
+          PY
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add external_replay.py external_audit.py test_external.py requirements-external.txt external_audit_plan.json
+            git commit -m 'Materialize reviewed external replay and audit implementation'
+            git push origin HEAD:develop
+          fi
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements-external.txt
+          mkdir -p verification
+          python -m pip freeze > verification/external-environment.txt
+      - name: Original and external unit tests
+        run: python -m pytest -q test_study.py test_revision.py test_external.py --junitxml=verification/all-tests.xml | tee verification/external-tests.log
+      - name: Real historical response replay
+        run: python external_replay.py --download | tee verification/external-replay.log
+      - name: Independent benchmark grading and frozen zero-to-five-shot shift
+        run: python external_audit.py | tee verification/external-audit.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: external-validity-${{ github.run_id }}
+          path: |
+            results/external/
+            verification/
+          retention-days: 90
+      - name: Temporary pinned inputs for cross-runtime verification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: external-audit-inputs-${{ github.run_id }}
+          path: |
+            .cache/mmlu_test.parquet
+            .cache/routerbench_5shot.pkl
+          include-hidden-files: true
+          retention-days: 7
