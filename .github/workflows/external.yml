@@ -2,7 +2,13 @@ name: External validity replay
 on:
   push:
     branches: [develop]
-    paths: ['.github/workflows/external.yml', 'external*.py', 'test_external.py', 'external*.json', 'requirements-external.txt', 'build_external_paper.py', 'package_external.py']
+    paths:
+      - '.github/workflows/external.yml'
+      - 'external*.py'
+      - 'test_external*.py'
+      - 'external*.json'
+      - 'requirements*.txt'
+      - 'ci_external_evidence.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,6 +27,7 @@ jobs:
       OMP_NUM_THREADS: '1'
       PYTHONHASHSEED: '0'
       MPLBACKEND: Agg
+      RESEARCH_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -29,35 +36,86 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-      - name: Install dependencies
+          cache-dependency-path: |
+            requirements.txt
+            requirements-external.txt
+      - name: Install research dependencies and record environment
         run: |
           python -m pip install -r requirements-external.txt
           mkdir -p verification
           python -m pip freeze > verification/external-environment.txt
-      - name: Original and external unit tests
-        run: python -m pytest -q test_study.py test_revision.py test_external.py --junitxml=verification/all-tests.xml 2>&1 | tee verification/external-tests.log
-      - name: Real historical response replay
-        run: python external_replay.py --download 2>&1 | tee verification/external-replay.log
-      - name: Independent benchmark grading and frozen zero-to-five-shot shift
+          git rev-parse HEAD > verification/tested-commit.txt
+      - name: Original, replay and fail-closed gate tests
+        run: python -m pytest -q test_study.py test_revision.py test_external.py test_external_ci.py --junitxml=verification/all-tests.xml 2>&1 | tee verification/external-tests.log
+      - name: First complete real historical replay
         run: |
-          python external_audit.py 2>&1 | tee verification/external-audit.log
-          python -c "import pandas as pd; pd.read_parquet('.cache/mmlu_test.parquet').to_json('.cache/mmlu_test.json',orient='records')"
+          python external_replay.py --download --output results/external 2>&1 | tee verification/external-replay-first.log
+          python external_audit.py --results results/external 2>&1 | tee verification/external-audit-first.log
+      - name: Second independent process execution including refitting
+        run: |
+          python external_replay.py --output results/external-repeat 2>&1 | tee verification/external-replay-second.log
+          python external_audit.py --results results/external-repeat 2>&1 | tee verification/external-audit-second.log
+      - name: Verify all outputs and generate evidence-based reports
+        run: |
+          python ci_external_evidence.py 2>&1 | tee verification/evidence-gates.log
+          cat dist-external/report.en.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Package exact source and verified results without raw upstream text
+        run: |
+          git archive --format=tar.gz --output=dist-external/source.tar.gz HEAD
+          cp results/external/primary_summary.csv dist-external/primary-results.csv
+          cp results/external/primary_comparisons.csv dist-external/paired-comparisons.csv
+          cp results/external/five_shot_summary.csv dist-external/five-shot-results.csv
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, zipfile
+          out=Path('dist-external')
+          with zipfile.ZipFile(out/'external-evidence.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for directory in ('results/external','results/external-repeat','verification'):
+                  for path in sorted(Path(directory).rglob('*')):
+                      if path.is_file(): archive.write(path,path)
+              for path in sorted(out.iterdir()):
+                  if path.is_file() and path.suffix!='.zip': archive.write(path,'reports/'+path.name)
+          paths=[p for p in sorted(out.iterdir()) if p.is_file() and p.name!='SHA256SUMS']
+          (out/'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in paths))
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: external-validity-${{ github.run_id }}
+          name: external-evidence-${{ github.run_id }}
           path: |
-            results/external/
+            dist-external/
             verification/
+          if-no-files-found: error
           retention-days: 90
-      - name: Temporary pinned inputs for cross-runtime verification
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
+  publish:
+    needs: external
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
         with:
-          name: external-audit-inputs-${{ github.run_id }}
-          path: |
-            .cache/mmlu_test.parquet
-            .cache/mmlu_test.json
-            .cache/routerbench_5shot.pkl
-          include-hidden-files: true
-          retention-days: 7
+          name: external-evidence-${{ github.run_id }}
+          path: evidence
+      - name: Check evidence and publish a new immutable-by-policy version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          cd evidence/dist-external
+          sha256sum --check SHA256SUMS
+          python - <<'PY'
+          import json,os
+          p=json.load(open('verification.json'))
+          if not (p['all_checks_passed'] and p['tested_commit']==os.environ['TESTED_SHA'] and p['complete_executions']==2 and p['tests']>0 and p['failures']==0 and p['skipped']==0):
+              raise SystemExit('Publication evidence is incomplete or bound to another commit')
+          PY
+          if gh release view v1.2.0 >/dev/null 2>&1; then
+            echo 'v1.2.0 already exists; no existing tag or asset was changed.'
+          else
+            gh release create v1.2.0 --draft --target "$TESTED_SHA" --title 'v1.2.0 — verified historical LLM replay' --notes-file report.en.md ./*
+            gh release edit v1.2.0 --draft=false
+          fi
