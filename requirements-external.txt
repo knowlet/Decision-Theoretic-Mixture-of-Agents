@@ -1,2 +1,2 @@
 -r requirements.txt
-pyarrow==20.0.0
+pyarrow==23.0.1
