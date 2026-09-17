@@ -44,7 +44,7 @@ bash verify.sh
 
 This executes **86 tests**, runs the main experiment twice, compares 34 main outputs, checks version-1 reference tables, and executes the supplementary and revision studies. It writes `verification/attestation.json`, raw paired cases, exact expectations, confidence intervals, and logs. Numeric tables use explicit tolerances across environments; within-runtime raw arrays must match exactly.
 
-To build both papers, install Pandoc, XeLaTeX, `texlive-latex-extra`, Noto CJK, Liberation, and DejaVu fonts, then:
+To build both papers on Debian/Ubuntu, install Pandoc, XeLaTeX, `lmodern`, `texlive-lang-chinese`, `texlive-latex-extra`, `texlive-fonts-recommended`, Noto CJK, Liberation, and DejaVu fonts, then:
 
 ```sh
 bash build_pdf.sh
