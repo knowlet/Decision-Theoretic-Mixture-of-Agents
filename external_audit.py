@@ -42,13 +42,33 @@ def gold_index(frame):
         index.setdefault(key,set()).add(int(r.answer))
     return {k:next(iter(v)) for k,v in index.items() if len(v)==1},sum(len(v)>1 for v in index.values())
 
+def permuted_gold_index(frame):
+    # Map by option text, not raw letters, when answer choices are permuted.
+    index={}
+    for r in frame.itertuples():
+        choices=tuple(normalized(x) for x in r.choices)
+        if len(set(choices))!=4:continue
+        key=(str(r.subject),normalized(r.question),tuple(sorted(choices)))
+        index.setdefault(key,set()).add(choices[int(r.answer)])
+    return {k:next(iter(v)) for k,v in index.items() if len(v)==1},sum(len(v)>1 for v in index.values())
+
+def match_permuted_gold(key,lookup):
+    if key is None:return None
+    subject,question,choices=key
+    if len(choices)!=4 or len(set(choices))!=4:return None
+    correct=lookup.get((subject,question,tuple(sorted(choices))))
+    return choices.index(correct) if correct in choices else None
+
 def audit_gold(raw,results,gold_path):
-    gold=pd.read_parquet(gold_path);lookup,ambiguous=gold_index(gold)
+    gold=pd.read_parquet(gold_path);lookup,ambiguous=permuted_gold_index(gold)
+    exact_lookup,_=gold_index(gold);exact_matches=0;reordered_matches=0
     rows=[];missing=[]
     for _,r in raw[raw.eval_name.str.startswith('mmlu-')].iterrows():
         key=prompt_key(r.prompt,str(r.eval_name))
-        if key not in lookup:missing.append(str(r.sample_id));continue
-        answer=lookup[key]
+        answer=match_permuted_gold(key,lookup)
+        if answer is None:missing.append(str(r.sample_id));continue
+        if key in exact_lookup:exact_matches+=1
+        else:reordered_matches+=1
         for i,m in enumerate(e.MODELS):
             parsed=e.parse_answer(r[m+'|model_response']);old=float(r[m]);new=float(parsed==answer)
             rows.append((str(r.sample_id),m,i,parsed,answer,old,new,int(parsed!=4),int(old!=new)))
@@ -56,7 +76,7 @@ def audit_gold(raw,results,gold_path):
     frame.to_csv(results/'mmlu_gold_pairs.csv',index=False)
     matched=frame.sample_id.nunique();eligible=int(raw.eval_name.str.startswith('mmlu-').sum())
     if matched<.95*eligible:raise AssertionError(f'Insufficient independent gold matching: {matched}/{eligible}')
-    # Re-score exactly the same already-selected primary actions; no policy retraining.
+    # Re-score the already-selected actions, without retraining or changing primary data.
     primary=pd.read_csv(results/'primary_per_case.csv')
     prim=primary[(primary.family=='mmlu')&primary.sample_id.isin(set(frame.sample_id))].copy()
     scores=frame.pivot(index='sample_id',columns='model_index',values='strict_gold_score')
@@ -70,11 +90,12 @@ def audit_gold(raw,results,gold_path):
     report={'status':'Post-primary exploratory independent-reference audit; no primary results modified',
         'source':'cais/mmlu','source_revision':GOLD_REV,'source_sha256':GOLD_SHA,
         'original_mmlu_rows':eligible,'matched_rows':int(matched),'unmatched_rows':len(missing),'ambiguous_reference_keys':ambiguous,
+        'exact_order_matches':exact_matches,'reordered_choice_matches':reordered_matches,
         'evaluated_model_response_pairs':len(frame),'parseable_pairs':int(frame.parseable.sum()),
         'parseable_score_disagreements':int(frame.loc[frame.parseable==1,'score_difference'].sum()),
         'all_strict_score_disagreements':int(frame.score_difference.sum()),
         'unmatched_sample_ids':missing,
-        'grading_rule':'Strict parsed leading answer compared with independently matched question+ordered choices. Unparsed responses count incorrect only in this secondary strict regrade, not retroactively in primary scores.',
+        'grading_rule':'Strict parsed leading answer compared with independently matched subject+question+choice set; correct option TEXT is mapped into the trace order, never by reusing a reference letter after permutation. Unparsed responses count incorrect only in this secondary strict regrade, not retroactively in primary scores.',
         'limitations':'MMLU only. Matching original benchmark labels does not exclude wrong/ambiguous benchmark gold or pretraining contamination.'}
     (results/'mmlu_gold_audit.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2),flush=True)
@@ -99,8 +120,6 @@ def five_shot(zero,five_raw,results):
     target=d5.subset(np.array(ix))
     original_map={s:i for i,s in enumerate(original.ids)}
     iz=np.array([original_map[s] for s in ids])
-    # Five-shot prompt hashes differ; membership is inherited ONLY from the
-    # original zero-shot held-out question identifiers and prompt groups.
     target.groups=original.groups[iz];target.splits=np.full(len(target),'test')
     if not np.array_equal(target.family,original.family[iz]):raise AssertionError('Task identities changed')
     if set(target.groups)&set(zero.groups[zero.splits!='test']):raise AssertionError('Shift train/test overlap')
