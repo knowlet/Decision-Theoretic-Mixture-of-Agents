@@ -29,8 +29,11 @@ jobs:
             python - <<'PY'
           import base64, hashlib, io, json, pathlib, subprocess, tarfile
           spec = json.loads(pathlib.Path('.source-bundle.json').read_text())
-          response = subprocess.check_output(['gh','api',f"repos/{spec['repository']}/git/blobs/{spec['blob_sha']}"])
-          data = base64.b64decode(json.loads(response)['content'])
+          parts = []
+          for sha in spec['blob_shas']:
+              response = subprocess.check_output(['gh','api',f"repos/{spec['repository']}/git/blobs/{sha}"])
+              parts.append(base64.b64decode(json.loads(response)['content']))
+          data = b''.join(parts)
           assert hashlib.sha256(data).hexdigest() == spec['sha256'], 'Source bundle integrity failure'
           with tarfile.open(fileobj=io.BytesIO(data), mode='r:xz') as archive:
               for item in archive.getmembers():
