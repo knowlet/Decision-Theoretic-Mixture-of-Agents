@@ -1,0 +1,17 @@
+__pycache__/
+.pytest_cache/
+.venv/
+.repeat-results/
+results/
+verification/
+dist/
+figures/
+paper.en.md
+paper.zh-TW.md
+paper.*.tex
+paper.*.pdf
+*.aux
+*.out
+*.toc
+*.log
+*.pyc

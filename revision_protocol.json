@@ -1,0 +1,14 @@
+{
+  "version": "1.1.0",
+  "status": "Exploratory revision after observing v1.0. Not preregistered.",
+  "matched_controls": ["R0_stop", "R1_static_all", "R2_greedy_workers", "R3_dp_workers"],
+  "matched_replicates": 20,
+  "learning_seed": 260918,
+  "learning_replicates": 20,
+  "calibration_sizes_per_type": [100, 500, 1000, 5000, 20000],
+  "route_error_rates": [0.0, 0.1, 0.25, 0.5],
+  "verifier_coupling": [0.0, 0.25, 0.5, 0.75, 1.0],
+  "runtime_repeats": 10,
+  "primary_goal": "Separate source access from planning; diagnose estimation, routing and common-mode verifier assumptions.",
+  "llm_api_calls": 0
+}

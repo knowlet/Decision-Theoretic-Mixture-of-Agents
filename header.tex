@@ -1,0 +1,27 @@
+\usepackage{fancyhdr}
+\usepackage{needspace}
+\usepackage{etoolbox}
+\usepackage{microtype}
+\usepackage{float}
+\floatplacement{figure}{H}
+\setcounter{tocdepth}{1}
+\setCJKmonofont{Noto Sans CJK TC}
+\usepackage{bookmark}
+\setlength{\headheight}{16pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Decision-Theoretic MoA}
+\fancyhead[R]{\small Synthetic study · 2026-09-17}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\setlength{\emergencystretch}{3em}
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.16}
+\AtBeginEnvironment{longtable}{\small}
+
+
+
+\hypersetup{hidelinks}
+
+\pretocmd{\section}{\Needspace{7\baselineskip}}{}{}
+\pretocmd{\subsection}{\Needspace{7\baselineskip}}{}{}

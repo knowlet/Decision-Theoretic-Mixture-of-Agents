@@ -1,0 +1,159 @@
+{
+  "source_archive_sha256": "9a895d606dda67bf79696d640c11b8038ef018dc2e41011d42b678e0fd39ddc3",
+  "original_pdf_sha256": "c5c88cba18fbbdf1d8e13f0dd22a3f32f3879b26278b7f01413734b32ac58b33",
+  "revised_default_results_match_original": [
+    {
+      "file": "action_utilization.csv",
+      "identical": true
+    },
+    {
+      "file": "cost_latency_sweep.csv",
+      "identical": true
+    },
+    {
+      "file": "counterexamples.json",
+      "identical": true
+    },
+    {
+      "file": "error_correlations.csv",
+      "identical": true
+    },
+    {
+      "file": "estimation_bounds.csv",
+      "identical": true
+    },
+    {
+      "file": "exact_expectations.csv",
+      "identical": true
+    },
+    {
+      "file": "exploratory_status.json",
+      "identical": true
+    },
+    {
+      "file": "exploratory_updated_oracle.csv",
+      "identical": true
+    },
+    {
+      "file": "exploratory_verifier_dependency.csv",
+      "identical": true
+    },
+    {
+      "file": "metrics_by_replicate.csv",
+      "identical": true
+    },
+    {
+      "file": "metrics_by_type.csv",
+      "identical": true
+    },
+    {
+      "file": "oracle_known_distribution.csv",
+      "identical": true
+    },
+    {
+      "file": "paired_comparisons.csv",
+      "identical": true
+    },
+    {
+      "file": "policy_snapshots.json",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_00.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_01.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_02.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_03.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_04.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_05.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_06.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_07.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_08.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_09.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_10.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_11.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_12.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_13.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_14.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_15.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_16.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_17.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_18.npz",
+      "identical": true
+    },
+    {
+      "file": "raw/replicate_19.npz",
+      "identical": true
+    },
+    {
+      "file": "replay_lookup_rep0.json",
+      "identical": true
+    },
+    {
+      "file": "stress_exact.csv",
+      "identical": true
+    },
+    {
+      "file": "summary.csv",
+      "identical": true
+    },
+    {
+      "file": "true_joint.npz",
+      "identical": true
+    }
+  ],
+  "note": "Original supplied artifact verified locally. This is not external peer replication."
+}
