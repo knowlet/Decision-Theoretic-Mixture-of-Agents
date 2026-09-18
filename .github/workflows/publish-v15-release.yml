@@ -9,7 +9,7 @@ name: Publish the verified v1.5 report
 on:
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
   actions: read
 env:
   SOURCE_RUN: '35329947656'
