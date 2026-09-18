@@ -7,6 +7,9 @@ name: Publish the verified v1.5 report
 # after re-checking its checksums and every gate. It does not re-run inference or rebuild the
 # manuscripts, and it refuses to overwrite an existing release.
 on:
+  push:
+    branches: [develop]
+    paths: ['.github/workflows/publish-v15-release.yml']
   workflow_dispatch:
 permissions:
   contents: write
