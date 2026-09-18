@@ -1,0 +1,166 @@
+name: Verify OpenJev shards and publish audited paper
+on:
+  push:
+    branches: [develop]
+    paths: ['.github/workflows/recover-openjev-paper.yml', 'recover_openjev_analysis.py', 'test_openjev_recovery.py', 'OPENJEV_REQUEST_RECOVERY.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+defaults:
+  run:
+    shell: bash
+env:
+  SOURCE_RUN: '35310006824'
+  SOURCE_COMMIT: ee971cc25e1475ac16375886c135fe155a0dc803
+concurrency:
+  group: openjev-verified-recovery-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      PYTHONHASHSEED: '0'
+      ANALYSIS_COMMIT: ${{ github.sha }}
+      REPORTING_COMMIT: ${{ github.sha }}
+      RESEARCH_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      REPORTING_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ee971cc25e1475ac16375886c135fe155a0dc803
+          path: experiment
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Require exact source and ten individually successful inference jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p experiment/incoming experiment/verification
+          gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" > experiment/verification/source-run.json
+          gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN/jobs?per_page=100" > experiment/verification/source-jobs.json
+          python - <<'PY'
+          import json,os
+          r=json.load(open('experiment/verification/source-run.json'))
+          assert r['head_sha']==os.environ['SOURCE_COMMIT'] and r['status']=='completed'
+          jobs=json.load(open('experiment/verification/source-jobs.json'))['jobs']
+          inference=[j for j in jobs if j['name'].startswith('inference (')]
+          assert len(inference)==10 and all(j['status']=='completed' and j['conclusion']=='success' for j in inference)
+          PY
+          gh run download "$SOURCE_RUN" --pattern "openjev-shard-*-$SOURCE_RUN" --dir experiment/incoming
+      - name: Preserve inference source and separately add analysis-only recovery
+        run: |
+          git -C experiment archive --format=tar.gz --output=verification/source.tar.gz HEAD
+          git archive --format=tar.gz --output=reporting-source.tar.gz HEAD
+          for file in recover_openjev_analysis.py test_openjev_recovery.py report_openjev.py build_openjev_pdf.sh openjev_chapter.en.md openjev_chapter.zh-TW.md OPENJEV_REQUEST_RECOVERY.md; do
+            cp "$file" "experiment/$file"
+          done
+          python -m pip install -r experiment/requirements-transfer.txt
+          python -m pip freeze > experiment/verification/recovery-environment.txt
+      - name: All original, selector and exact-request-recovery regression tests
+        working-directory: experiment
+        run: python -m pytest -q --junitxml=verification/transfer-tests.xml 2>&1 | tee verification/all-tests.log
+      - name: Reconstruct exact recorded requests and complete paired analysis
+        working-directory: experiment
+        run: python recover_openjev_analysis.py --download 2>&1 | tee verification/recovery.log
+      - name: Two complete population-transfer reruns and ledger verification
+        working-directory: experiment
+        run: |
+          python transfer_study.py --out results/transfer
+          python audit_transfer.py --out results/transfer
+          python transfer_study.py --out results/transfer-repeat
+          python audit_transfer.py --out results/transfer-repeat
+          python ci_transfer.py
+      - name: Add result-derived cross-host serialization limitation to both papers
+        working-directory: experiment
+        run: |
+          python - <<'PY'
+          import json,pathlib
+          a=json.load(open('results/openjev/numeric_recovery_summary.json'))
+          assert a['all_request_hashes_matched_exactly'] and a['records']==464 and a['max_ulp_offset']<=8
+          common=f"{a['records_requiring_numeric_recovery']}/{a['records']}"
+          en='\n\n## Post-inference exact-request recovery\n\nAll ten inference workers succeeded, but the original aggregation job failed because re-fitting on a different CPU changed the last bits of training-derived candidate error estimates and therefore their serialized request hashes. No neural outputs or labels were changed or rerun. An analysis-only recovery searched at most eight IEEE-754 ULPs per candidate estimate, holding all other request fields fixed, and required an exact match to every originally recorded full-request SHA-256. It recovered '+common+' records requiring numeric reconstruction; the maximum absolute difference was '+format(a['max_absolute_difference'],'.3g')+'. Between the two models, '+str(a['primary_request_hash_differences_between_models'])+'/192 primary requests ('+str(a['test_request_hash_differences_between_models'])+'/128 test requests) had different literal hashes despite identical question, panel, split and action contracts. These precision-level decimal differences can change tokenization; this study does not prove they are behaviorally irrelevant. Thus the pilot is matched at task/panel level, not byte-identical numeric input. The failed aggregate job remains visible. Successful recovery/reporting has separately recorded commits and execution; it is not misreported as new inference. Full recovered triples and offsets are included in the evidence. Future trials should distribute a single canonical request fixture to every worker.\n'
+          zh='\n\n## 推論後的原請求雜湊還原\n\n十個推論 worker 全數成功，但原合併工作在不同 CPU 重新擬合時，訓練條件錯誤率的小數末位改變，導致請求文字 SHA-256 不同而停止。沒有重跑或修改神經輸出、標籤或選題。分析修正只搜尋每個估計值正負八個 IEEE-754 ULP 範圍，其他欄位固定，且每一筆完整請求都必須精確符合原始已記錄 SHA-256。共有 '+common+' 筆需還原，最大絕對差異為 '+format(a['max_absolute_difference'],'.3g')+'。兩模型之間 '+str(a['primary_request_hash_differences_between_models'])+'/192 主要請求、其中 '+str(a['test_request_hash_differences_between_models'])+'/128 測試請求的文字雜湊不同，但題目、候選 panel、切分與動作合約相同。末位小數差異可能影響 tokenization，本研究不證明其行為無關。因此這是相同任務／panel 的 pilot，不是逐位元相同數值輸入的實驗。原合併失敗紀錄保留，成功修復分析與報告另記來源 commit 和執行，不偽裝成新推論。全部還原值與偏移都有衍生證據。後續應由同一處建立固定請求檔，再交給所有 worker。\n'
+          for lang,addition in (('en',en),('zh-TW',zh)):
+              p=pathlib.Path('openjev_chapter.'+lang+'.md');s=p.read_text()
+              if lang=='zh-TW':s=s.replace('当前','當前').replace('预訓練','預訓練').replace('反转','反轉').replace('跑过','跑過')
+              p.write_text(s+addition)
+          PY
+      - name: Install full paper toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pandoc lmodern texlive-xetex texlive-lang-chinese texlive-latex-extra texlive-fonts-recommended fonts-noto-cjk fonts-liberation fonts-dejavu-core
+      - name: Build both complete result-derived manuscripts
+        working-directory: experiment
+        run: bash build_openjev_pdf.sh
+      - name: Package validated experiment and separate analysis/reporting source
+        run: |
+          python - <<'PY'
+          import pathlib,zipfile,json,os,hashlib,shutil
+          root=pathlib.Path('experiment');dist=root/'dist-paper'
+          v=json.load(open(dist/'verification.json'))
+          assert v['experiment_commit']==os.environ['SOURCE_COMMIT'] and v['reporting_commit']==os.environ['GITHUB_SHA']
+          assert v['experiment_evidence']['analysis_commit']==os.environ['GITHUB_SHA']
+          assert all(s['failures']==s['skipped']==0 for s in v['test_suites'])
+          for name in ('request_numeric_recovery.json','numeric_recovery_summary.json'):
+              shutil.copy(root/'results/openjev'/name,dist/name)
+          with zipfile.ZipFile(dist/'reproducibility.zip','w',zipfile.ZIP_DEFLATED) as z:
+              z.write('reporting-source.tar.gz','analysis-and-reporting-source.tar.gz')
+              for folder in ('results','inputs','verification','incoming'):
+                  for p in sorted((root/folder).rglob('*')):
+                      if p.is_file():z.write(p,str(p.relative_to(root)))
+              for p in dist.iterdir():
+                  if p.is_file() and p.suffix in ('.pdf','.md','.json','.csv','.tex'):z.write(p,p.name)
+          for pattern in ('*.aux','*.log','*.out'):
+              for p in dist.glob(pattern):p.unlink()
+          (dist/'SHA256SUMS').write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in sorted(dist.iterdir()) if p.is_file() and p.name!='SHA256SUMS'))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: audited-openjev-paper-${{ github.run_id }}
+          path: |
+            experiment/dist-paper/
+            experiment/verification/
+            experiment/results/openjev/
+          if-no-files-found: error
+          retention-days: 90
+  publish:
+    needs: recover
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: audited-openjev-paper-${{ github.run_id }}
+          path: evidence
+      - name: Publish a new version only after all evidence checks
+        working-directory: evidence/dist-paper
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          sha256sum -c SHA256SUMS
+          python - <<'PY'
+          import json,os
+          v=json.load(open('verification.json'))
+          assert v['experiment_commit']==os.environ['SOURCE_COMMIT'] and v['reporting_commit']==os.environ['GITHUB_SHA']
+          assert v['experiment_evidence']['request_recovery']['all_request_hashes_matched_exactly']
+          assert v['experiment_evidence']['all_gates_passed'] and all(s['failures']==s['skipped']==0 for s in v['test_suites'])
+          PY
+          if gh release view v1.4.0 >/dev/null 2>&1; then
+            echo 'Existing v1.4.0 is retained unchanged.'
+          else
+            gh release create v1.4.0 --target "$GITHUB_SHA" --title 'v1.4.0 — audited OpenJev head-to-head and population transfer' --notes 'Ten actual local OpenJev inference workers succeeded. Analysis-only recovery reconstructs every original request hash and discloses cross-CPU floating-point serialization differences; original failed aggregate logs are retained. Includes paired 128-question pilot, 64-case calibration, full ProEval reruns, exact sources, provenance and bilingual papers. Not proprietary Jev, CERA training, SOTA certification or peer review.' ./*
+          fi
