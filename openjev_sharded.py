@@ -9,7 +9,9 @@ import numpy as np
 import pandas as pd
 import openjev_benchmark as b
 import transfer_study as t
-SHARDS={'qwen35-4b':8,'qwen35-0.8b':2}
+# Shard counts scale with the locked benchmark size so each runner keeps the
+# v1.4 per-shard forward budget; v1.5 locks six datasets instead of four.
+SHARDS={'qwen35-4b':12,'qwen35-0.8b':3}
 
 def backend():
     import torch
@@ -79,7 +81,7 @@ def finalize(label,incoming,cache,out):
         request=b.render_request(case_map[case_id],kind=='reverse')
         assert record['request_sha256']==b.hash_object(request)
         b.validate_result(record['result'],request);buckets[kind][case_id]=record['result']
-    outputs=buckets['primary'];assert set(outputs)==set(case_map) and len(buckets['reverse'])==32 and len(buckets['repeat'])==8
+    outputs=buckets['primary'];assert set(outputs)==set(case_map) and len(buckets['reverse'])==b.ORDER_N*len(b.DATASETS) and len(buckets['repeat'])==b.REPEAT_N*len(b.DATASETS)
     baselines.to_csv(out/'baselines.csv',index=False);t.write_json(out/'selection.json',selection);t.write_json(out/'calibration_resources.json',resources)
     t.write_json(out/'case_manifest.json',[{k:c[k] for k in ('id','dataset','sample_id','group','split','panel')}|{'request_sha256':b.hash_object(b.render_request(c))} for c in cases])
     with (out/'selector_scores.jsonl').open('w') as dst:
@@ -108,9 +110,10 @@ def finalize(label,incoming,cache,out):
             else:repeat.append(dict(id=cid,max_probability_delta=max(abs(p[k]-q[k]) for k in p),same_argmax=a==bb))
     assert all(r['same_argmax'] and r['max_probability_delta']<1e-5 for r in repeat)
     pd.DataFrame(reverse).to_csv(out/'order_robustness.csv',index=False);t.write_json(out/'repeat_check.json',repeat)
-    t.write_json(out/'provenance.json',{'version':'1.4.0','tested_commit':os.getenv('GITHUB_SHA'),'selector_model':label,'metadata':provenance[0]['metadata'],'all_worker_provenance':provenance,
+    t.write_json(out/'provenance.json',{'version':'1.5.0','tested_commit':os.getenv('GITHUB_SHA'),'selector_model':label,'metadata':provenance[0]['metadata'],'all_worker_provenance':provenance,
         'request_spec_sha256':t.digest(b.ROOT/'openjev_protocol.json'),'upstream_direct_git_blob':provenance[0]['upstream_direct_git_blob'],
-        'n_test':128,'n_development':64,'new_primary_local_forwards':192,'new_robustness_local_forwards':40,'warmup_forwards':count,
+        'n_datasets':len(b.DATASETS),'n_test':b.TEST_N*len(b.DATASETS),'n_development':b.DEV_N*len(b.DATASETS),
+        'new_primary_local_forwards':len(cases),'new_robustness_local_forwards':(b.ORDER_N+b.REPEAT_N)*len(b.DATASETS),'warmup_forwards':count,
         'new_llm_api_calls':0,'jev_proprietary_calls':0,'cera_training_steps':0,'worker_generation_calls':0,'run_url':os.getenv('RESEARCH_RUN_URL'),
         'scope':'CPU-accumulation compatibility variant of unchanged upstream direct scorer. Same locked primary cases; warmups counted per worker. Archived workers, new local selector inference only.'})
     t.write_json(out/'SHA256.json',{p.name:t.digest(p) for p in out.iterdir() if p.is_file() and p.name!='SHA256.json'})

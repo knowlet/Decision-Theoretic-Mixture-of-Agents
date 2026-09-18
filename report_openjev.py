@@ -23,6 +23,9 @@ def build():
     OUT.mkdir(exist_ok=True)
     verify=json.loads((R/'verification.json').read_text())
     if not verify['all_gates_passed']:raise RuntimeError('No verified outcomes')
+    # Reporting numbers come from the verified analysis record, not from prose
+    # that would silently go stale the next time the benchmark is widened.
+    n_test,n_dev=verify['n_test'],verify['n_development']
     summary=pd.read_csv(R/'summary.csv');comp=pd.read_csv(R/'comparisons.csv')
     calibration=pd.read_csv(R/'calibration.csv');robust=pd.read_csv(R/'robustness.csv')
     chosen=summary[(summary.model=='qwen35-4b')|summary.algorithm.str.startswith('openjev_')].copy()
@@ -49,16 +52,16 @@ def build():
     tests.append({'suite':'combined regression','tests':len(root_tests),'failures':0,'skipped':0})
     build_transfer_paper.build()
     for lang in ('en','zh-TW'):
-        text=Path(f'dist-transfer/paper.{lang}.md').read_text().replace('Version 1.3.0','Version 1.4.0').replace('v1.3.0 ·','v1.4.0 ·')
+        text=Path(f'dist-transfer/paper.{lang}.md').read_text().replace('Version 1.3.0','Version 1.5.0').replace('v1.3.0 ·','v1.5.0 ·')
         if lang=='en':
             text=text.replace("title: 'When to Update the Router'","title: 'When to Update the Router—and When to Use a Learned Selector'")
             text=text.replace('No Jev inference, CERA-MoA agent training, live LLM generation, or human preference experiment was performed.',
-                'The population-transfer layer performs no proprietary Jev inference, CERA-MoA training, new worker generation, or human preference experiment. A separately specified head-to-head extension below executes local OpenJev selector inference on a 128-question pilot with 64 development cases. Matched worker-panel and policy-level comparisons are reported separately, including actual selector CPU time and option-order sensitivity.')
+                f'The population-transfer layer performs no proprietary Jev inference, CERA-MoA training, new worker generation, or human preference experiment. A separately specified head-to-head extension below executes local OpenJev selector inference on a {n_test}-question pilot with {n_dev} development cases. Matched worker-panel and policy-level comparisons are reported separately, including actual selector CPU time and option-order sensitivity.')
             heading='# References and attribution'
         else:
             text=text.replace("title: '何時該更新路由器？'","title: '何時更新路由器，何時使用學習式選擇器？'")
             text=text.replace('本研究沒有執行 Jev 推論、CERA-MoA 代理訓練、新 LLM 生成或人類偏好實驗。',
-                '模型池替換部分沒有執行專有 Jev 推論、CERA-MoA 訓練、新工作模型生成或人類偏好實驗。本版另加入實際 OpenJev 選擇器推論：以 128 題留出 pilot 與 64 題開發資料，比較相同候選資訊下的答案選擇，並分開完整策略、選擇器 CPU 耗時與選項順序敏感度。')
+                f'模型池替換部分沒有執行專有 Jev 推論、CERA-MoA 訓練、新工作模型生成或人類偏好實驗。本版另加入實際 OpenJev 選擇器推論：以 {n_test} 題留出 pilot 與 {n_dev} 題開發資料，比較相同候選資訊下的答案選擇，並分開完整策略、選擇器 CPU 耗時與選項順序敏感度。')
             heading='# 參考文獻、揭露與資料歸屬'
         chapter=Path(f'openjev_chapter.{lang}.md').read_text()
         for k,v in values.items():chapter=chapter.replace('@@'+k+'@@',v)
@@ -67,7 +70,7 @@ def build():
         text=text.replace(heading,chapter+'\n\n'+heading)
         text=re.sub(r'(?<!<)https?://[^\s<>。]+',lambda m:'<'+m.group().rstrip('.,')+'>'+m.group()[len(m.group().rstrip('.,')):],text)
         (OUT/f'paper.{lang}.md').write_text(text)
-    provenance={'version':'1.4.0','experiment_commit':verify['tested_commit'],'experiment_run':verify['run_url'],
+    provenance={'version':'1.5.0','experiment_commit':verify['tested_commit'],'experiment_run':verify['run_url'],
         'reporting_commit':os.getenv('REPORTING_COMMIT','local-render'),'reporting_run':os.getenv('REPORTING_RUN_URL','local-render'),
         'experiment_evidence':verify,'test_suites':tests,'scope':'Reporting reuses verified inference outputs. Its reporting commit is not relabeled as the inference commit.'}
     (OUT/'verification.json').write_text(json.dumps(provenance,indent=2)+'\n')

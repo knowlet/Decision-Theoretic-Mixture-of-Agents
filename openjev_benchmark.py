@@ -184,9 +184,9 @@ def execute_benchmark(label,cache,out,vendor):
             repeat.append(dict(id=c['id'],max_probability_delta=difference,same_argmax=validate_result(rr,render_request(c))==validate_result(old,render_request(c))))
     pd.DataFrame(reverse).to_csv(out/'order_robustness.csv',index=False);t.write_json(out/'repeat_check.json',repeat)
     if not all(r['same_argmax'] and r['max_probability_delta']<1e-5 for r in repeat):raise AssertionError('Repeated readout unstable')
-    t.write_json(out/'provenance.json',{'version':'1.4.0','tested_commit':os.getenv('GITHUB_SHA','local-uncommitted'),'selector_model':label,'metadata':metadata,
+    t.write_json(out/'provenance.json',{'version':'1.5.0','tested_commit':os.getenv('GITHUB_SHA','local-uncommitted'),'selector_model':label,'metadata':metadata,
         'request_spec_sha256':t.digest(ROOT/'openjev_protocol.json'),'upstream_direct_git_blob':blob,
-        'n_test':4*TEST_N,'n_development':4*DEV_N,'new_primary_local_forwards':len(cases),'new_robustness_local_forwards':len(reverse)+len(repeat),'warmup_forwards':1,
+        'n_datasets':len(DATASETS),'n_test':len(DATASETS)*TEST_N,'n_development':len(DATASETS)*DEV_N,'new_primary_local_forwards':len(cases),'new_robustness_local_forwards':len(reverse)+len(repeat),'warmup_forwards':1,
         'new_llm_api_calls':0,'jev_proprietary_calls':0,'cera_training_steps':0,'worker_generation_calls':0,
         'max_rss_kb':resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,'cpu':platform.processor(),'platform':platform.platform(),'python':sys.version,
         'cpu_model_name':next((l.split(':',1)[1].strip() for l in Path('/proc/cpuinfo').read_text().splitlines() if l.startswith('model name')),'unknown'),

@@ -7,6 +7,13 @@ import pandas as pd
 import openjev_benchmark as b
 import transfer_study as t
 
+# Derived from the locked protocol so widening the benchmark cannot leave a
+# stale literal gate behind. v1.5 runs six datasets instead of four.
+NDS=len(b.DATASETS)
+TEST_TOTAL,DEV_TOTAL=b.TEST_N*NDS,b.DEV_N*NDS
+CASE_TOTAL=TEST_TOTAL+DEV_TOTAL
+ROBUST_TOTAL=(b.ORDER_N+b.REPEAT_N)*NDS
+
 def validate_bundle(path):
     checks=json.loads((path/'SHA256.json').read_text())
     for name,sha in checks.items():
@@ -14,18 +21,18 @@ def validate_bundle(path):
     meta=json.loads((path/'provenance.json').read_text());manifest=json.loads((path/'case_manifest.json').read_text())
     if meta['upstream_direct_git_blob']!='943f34728d1966bf2325d6e6d34d2a7043cd6a56':raise AssertionError('Scorer provenance mismatch')
     if meta['request_spec_sha256']!=t.digest(t.ROOT/'openjev_protocol.json'):raise AssertionError('Protocol mismatch')
-    assert len(manifest)==192 and len({r['id'] for r in manifest})==192
+    assert len(manifest)==CASE_TOTAL and len({r['id'] for r in manifest})==CASE_TOTAL
     test={r['id']:r for r in manifest if r['split']=='test'};dev={r['id']:r for r in manifest if r['split']=='dev'}
-    assert len(test)==128 and len(dev)==64
+    assert len(test)==TEST_TOTAL and len(dev)==DEV_TOTAL
     assert not {r['group'] for r in test.values()}&{r['group'] for r in dev.values()}
     scores=[json.loads(x) for x in (path/'selector_scores.jsonl').read_text().splitlines()]
-    assert len(scores)==192 and {r['id'] for r in scores}=={r['id'] for r in manifest}
+    assert len(scores)==CASE_TOTAL and {r['id'] for r in scores}=={r['id'] for r in manifest}
     for r in scores:
         p=np.array(r['probabilities']);assert len(p)==4 and np.isfinite(p).all() and (p>=0).all() and abs(p.sum()-1)<1e-6
         assert r['model']['source']==meta['metadata']['source'] and r['model']['revision']==meta['metadata']['revision']
         assert r['model']['cpu_backend_sha256']==t.digest(t.ROOT/'openjev_sharded.py')
     df=pd.read_csv(path/'per_case.csv',dtype={'sample_id':str})
-    assert df.algorithm.nunique()==12 and len(df)==12*128 and not df.duplicated(['dataset','sample_id','algorithm']).any()
+    assert df.algorithm.nunique()==12 and len(df)==12*TEST_TOTAL and not df.duplicated(['dataset','sample_id','algorithm']).any()
     np.testing.assert_allclose(df.objective,df.loss+df.cost,atol=1e-12,rtol=0)
     np.testing.assert_allclose(df.cost,df.queries*.01,atol=1e-12,rtol=0)
     assert np.isfinite(df[['objective','loss','queries']]).all().all() and df.queries.between(0,3).all()
@@ -38,10 +45,10 @@ def validate_bundle(path):
         else:assert (g.new_selector_calls==0).all()
     assert ((df.selected==-1)==(df.answered==0)).all()
     assert (df.loc[df.answered==0,'loss']==.25).all()
-    rep=json.loads((path/'repeat_check.json').read_text());assert len(rep)==8 and all(r['same_argmax'] and r['max_probability_delta']<1e-5 for r in rep)
-    assert len(pd.read_csv(path/'order_robustness.csv'))==32
+    rep=json.loads((path/'repeat_check.json').read_text());assert len(rep)==b.REPEAT_N*NDS and all(r['same_argmax'] and r['max_probability_delta']<1e-5 for r in rep)
+    assert len(pd.read_csv(path/'order_robustness.csv'))==b.ORDER_N*NDS
     from openjev_sharded import SHARDS
-    assert meta['new_primary_local_forwards']==192 and meta['new_robustness_local_forwards']==40 and meta['warmup_forwards']==SHARDS[meta['selector_model']]
+    assert meta['new_primary_local_forwards']==CASE_TOTAL and meta['new_robustness_local_forwards']==ROBUST_TOTAL and meta['warmup_forwards']==SHARDS[meta['selector_model']]
     assert len(meta['all_worker_provenance'])==meta['warmup_forwards']
     assert meta['new_llm_api_calls']==meta['jev_proprietary_calls']==meta['cera_training_steps']==meta['worker_generation_calls']==0
     return df,meta,manifest
@@ -67,17 +74,17 @@ def paired(df,count=2000):
         diffs=[];draws=[]
         for i,ds in enumerate(b.DATASETS):
             x=df[(df.selector_model==ma)&(df.algorithm==aa)&(df.dataset==ds)].set_index('sample_id');y=df[(df.selector_model==mb)&(df.algorithm==ab)&(df.dataset==ds)].set_index('sample_id').reindex(x.index)
-            assert len(x)==32 and not y.objective.isna().any()
+            assert len(x)==b.TEST_N and not y.objective.isna().any()
             d=(x.objective-y.objective).to_numpy();rng=np.random.default_rng(np.random.SeedSequence([141809,i]));boot=d[rng.integers(0,len(d),(count,len(d)))].mean(1)
-            diffs.append(d.mean());draws.append(boot);lo,hi=np.quantile(boot,[.025,.975]);rows.append(dict(dataset=ds,a=ma+':'+aa,b=mb+':'+ab,difference=d.mean(),lo=lo,hi=hi,n=32))
-        lo,hi=np.quantile(np.mean(draws,axis=0),[.025,.975]);flo,fhi=np.quantile(np.mean(draws,axis=0),[.00625,.99375]);rows.append(dict(dataset='macro_binary',a=ma+':'+aa,b=mb+':'+ab,difference=np.mean(diffs),lo=lo,hi=hi,family_lo=flo,family_hi=fhi,n=128))
+            diffs.append(d.mean());draws.append(boot);lo,hi=np.quantile(boot,[.025,.975]);rows.append(dict(dataset=ds,a=ma+':'+aa,b=mb+':'+ab,difference=d.mean(),lo=lo,hi=hi,n=b.TEST_N))
+        lo,hi=np.quantile(np.mean(draws,axis=0),[.025,.975]);flo,fhi=np.quantile(np.mean(draws,axis=0),[.00625,.99375]);rows.append(dict(dataset='macro_binary',a=ma+':'+aa,b=mb+':'+ab,difference=np.mean(diffs),lo=lo,hi=hi,family_lo=flo,family_hi=fhi,n=TEST_TOTAL))
     return pd.DataFrame(rows)
 
 def calibration(path,model):
     f=pd.read_csv(path/'confidence.csv');rows=[]
     for score in ('raw_option_score','calibrated_success'):
         p=f[score].to_numpy();y=f.correct.to_numpy();bins=np.minimum((p*10).astype(int),9);ece=sum(np.mean(bins==i)*abs(p[bins==i].mean()-y[bins==i].mean()) for i in range(10) if np.any(bins==i))
-        rows.append(dict(model=model,score=score,n=len(f),brier=np.mean((p-y)**2),ece=ece,caveat='Raw action-option mass is a confidence proxy, not a correctness distribution; calibrated variant uses 64 distinct development cases.'))
+        rows.append(dict(model=model,score=score,n=len(f),brier=np.mean((p-y)**2),ece=ece,caveat=f'Raw action-option mass is a confidence proxy, not a correctness distribution; calibrated variant uses {DEV_TOTAL} distinct development cases.'))
     return rows
 
 def run(inputs,out):
@@ -94,7 +101,7 @@ def run(inputs,out):
     for overhead in (0.,.001,.005,.01,.02,.05,.1):
         for r in macro.itertuples():sensitivity.append(dict(model=r.model,algorithm=r.algorithm,assumed_selector_loss_charge=overhead,objective=r.objective+(overhead if r.algorithm.startswith('openjev_') else 0)))
     pd.DataFrame(sensitivity).to_csv(out/'selector_cost_sensitivity.csv',index=False)
-    t.write_json(out/'verification.json',{'version':'1.4.0','tested_commit':os.getenv('GITHUB_SHA'),'all_gates_passed':True,'model_runs':metas,'matching_model_test_groups':128,'n_algorithms':12,'paired_ledger_rows':len(df),'total_local_selector_forwards':sum(m['new_primary_local_forwards']+m['new_robustness_local_forwards']+m['warmup_forwards'] for m in metas),'rerun_scope':'8 repeat forwards per model on the original worker; deterministic symbolic replay; not two independent full selector inference runs','run_url':os.getenv('RESEARCH_RUN_URL'),'claim_scope':'Paired pilot conditional on fixed archive, calibration, explicit CPU-accumulation variant and selected groups. No universal or proprietary Jev superiority claim.'})
+    t.write_json(out/'verification.json',{'version':'1.5.0','tested_commit':os.getenv('GITHUB_SHA'),'all_gates_passed':True,'model_runs':metas,'datasets':list(b.DATASETS),'n_datasets':NDS,'n_test':TEST_TOTAL,'n_development':DEV_TOTAL,'matching_model_test_groups':TEST_TOTAL,'n_algorithms':12,'paired_ledger_rows':len(df),'total_local_selector_forwards':sum(m['new_primary_local_forwards']+m['new_robustness_local_forwards']+m['warmup_forwards'] for m in metas),'rerun_scope':f'{b.REPEAT_N} repeat forwards per model on the original worker; deterministic symbolic replay; not two independent full selector inference runs','run_url':os.getenv('RESEARCH_RUN_URL'),'claim_scope':'Paired pilot conditional on fixed archive, calibration, explicit CPU-accumulation variant and selected groups. No universal or proprietary Jev superiority claim.'})
     print(macro.to_string(index=False));print(comp[comp.dataset=='macro_binary'].to_string(index=False))
 
 if __name__=='__main__':

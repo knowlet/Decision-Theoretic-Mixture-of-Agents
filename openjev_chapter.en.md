@@ -4,7 +4,7 @@ This section adds **new local neural inference** to the population-transfer evid
 
 ## A common task, not an unrelated leaderboard
 
-We retain the four binary ProEval datasets and replacement worker pool above. Within each original split, unique question groups are selected by a fixed salted hash: 32 test and 16 development groups per dataset, yielding 128 test and 64 development cases. Selection does not depend on difficulty, correctness, disagreement or confidence. They are a subset of the earlier corpus, **not 128 additional independent tasks**. The protocol preceded new selector scoring but followed v1.3 outcomes and owned runtime probes; this is not independent preregistration.
+We retain the six binary ProEval datasets and replacement worker pool above. Within each original split, unique question groups are selected by a fixed salted hash: 32 test and 16 development groups per dataset, yielding 192 test and 96 development cases. Selection does not depend on difficulty, correctness, disagreement or confidence. The selection salt is unchanged from the earlier four-dataset pilot, so all 128 previously scored test cases are still selected: the earlier result is a subset of this one, not a replacement. They remain a subset of a single earlier corpus, **not 192 independently collected tasks**. The protocol preceded new selector scoring but followed v1.3 outcomes and owned runtime probes; this is not independent preregistration.
 
 The **matched-panel comparison** gives empirical fixed-three, panel-majority and OpenJev the same three acquired worker answers, with the panel selected by training/development data. OpenJev additionally sees the task text and the same training-derived conditional candidate error estimates available to the empirical terminal rule. These estimates are not current-task gold. The empirical method does not interpret the task semantically, so representation and inductive bias still differ. This avoids comparing a calibrated incumbent against an uninformed neural comparator but does not equalize pretraining histories.
 
@@ -14,9 +14,9 @@ In the **policy-level comparison**, Bellman and other controllers can acquire fe
 
 The main scorer is immutable Qwen3.5-4B, supported by the selected upstream implementation. Qwen3.5-0.8B is an explicit capacity substitution, not a reproduction of upstream's 4B leaderboard. Both use the same readout, task selection, state rendering and option-order procedure. No parameters are trained or quantized; overlong prompts fail instead of being truncated. Hosted CPU execution is not compared numerically with original GPU or proprietary-service timings.
 
-`OpenJev raw` chooses the largest option score among three return actions and deferral. `OpenJev calibrated` proposes the highest-scored non-defer candidate. A regularized logistic predictor, fitted on 64 development cases, estimates whether that candidate is correct from candidate log odds and normalized action entropy. A single-class development set uses Beta(1,1) smoothing. At test, estimated success must reach 0.75 to return the candidate, reflecting deferral loss 0.25. Test labels never fit the calibrator. The development split also served incumbent parameter selection; it is not an independent evaluation sample.
+`OpenJev raw` chooses the largest option score among three return actions and deferral. `OpenJev calibrated` proposes the highest-scored non-defer candidate. A regularized logistic predictor, fitted on 96 development cases, estimates whether that candidate is correct from candidate log odds and normalized action entropy. A single-class development set uses Beta(1,1) smoothing. At test, estimated success must reach 0.75 to return the candidate, reflecting deferral loss 0.25. Test labels never fit the calibrator. The development split also served incumbent parameter selection; it is not an independent evaluation sample.
 
-Each model executes 192 primary forward passes, 32 reversed-order probes and eight exact-input repeats. Eight 4B workers and two 0.8B workers each perform one separately excluded warmup: **240 forwards for 4B and 234 for 0.8B, @@TOTAL_FORWARDS@@ in the completed benchmark**. Earlier owned probes and the superseded native-CPU attempt are not counted as completed benchmark evidence. Workers remain archived; proprietary Jev calls, CERA training, live worker generation and debate remain zero. Raw and calibrated variants share their readout; calibration does not query the model twice.
+Each model executes 288 primary forward passes, 48 reversed-order probes and twelve exact-input repeats. Twelve 4B workers and three 0.8B workers each perform one separately excluded warmup: **360 forwards for 4B and 351 for 0.8B, @@TOTAL_FORWARDS@@ in the completed benchmark**. Earlier owned probes and the superseded native-CPU attempt are not counted as completed benchmark evidence. Workers remain archived; proprietary Jev calls, CERA training, live worker generation and debate remain zero. Raw and calibrated variants share their readout; calibration does not query the model twice.
 
 ## Results with coverage and acquisition use
 
@@ -24,7 +24,7 @@ The objective is error loss 1 or deferral loss 0.25, plus 0.01 per acquired work
 
 @@SCORE_TABLE@@
 
-No gate requires the proposed method to win. A lower point estimate alone is not a superiority claim. Contrasts are paired on the same 128 unique groups, resampled within dataset and equally averaged across datasets. Intervals condition on fitted policies, calibration and recorded neural outputs, rather than measuring retraining uncertainty.
+No gate requires the proposed method to win. A lower point estimate alone is not a superiority claim. Contrasts are paired on the same 192 unique groups, resampled within dataset and equally averaged across datasets. Intervals condition on fitted policies, calibration and recorded neural outputs, rather than measuring retraining uncertainty.
 
 @@PAIRS@@
 
@@ -38,7 +38,7 @@ The following 98.75% percentile intervals provide a conservative Bonferroni-styl
 
 Raw candidate option mass is compared with correctness only as a diagnostic proxy: it was not originally guaranteed to represent that event. The calibrated score explicitly estimates correctness, but a small calibration set does not establish universal reliability. Type-valid output can be wrong; greater option mass is not a lower-risk certificate.
 
-Primary option positions are deterministically counterbalanced. Reversal keeps the task, actions and labels unchanged, measuring decision flips and total variation between remapped distributions. These 32 probes per model do not create new independent questions. Each reversal and repeat runs on the original case's worker, avoiding a host-change confound within the probe.
+Primary option positions are deterministically counterbalanced. Reversal keeps the task, actions and labels unchanged, measuring decision flips and total variation between remapped distributions. These 48 probes per model do not create new independent questions. Each reversal and repeat runs on the original case's worker, avoiding a host-change confound within the probe.
 
 @@ROBUSTNESS@@
 
@@ -60,6 +60,6 @@ This separates CERA-MoA's open-ended inference convention—returning the highes
 
 Experiment source: `@@EXPERIMENT_COMMIT@@`. Hosted execution: @@EXPERIMENT_RUN@@. A later reporting commit is recorded separately, never relabeled as the source of those inference calls.
 
-This is an executed head-to-head pilot, not just an API contract. Its limits include 128 test cases, four familiar benchmarks, one archive, one neural family, declared task-independent costs and no new worker generation. It does not establish current SOTA, proprietary Jev quality, CERA training effects or individual human preferences. Stronger experiments should cross model families and independently collected datasets and factorially separate representation, terminal selection and acquisition strategy under common authorization and resource contracts.
+This is an executed head-to-head pilot, not just an API contract. Its limits include 192 test cases, six familiar benchmarks, one archive, one neural family, declared task-independent costs and no new worker generation. It does not establish current SOTA, proprietary Jev quality, CERA training effects or individual human preferences. Stronger experiments should cross model families and independently collected datasets and factorially separate representation, terminal selection and acquisition strategy under common authorization and resource contracts.
 
 Upstream attribution: TheoLeeCJ, *OpenJev*, MIT-licensed source with separate model dependencies, pinned revision above. https://github.com/TheoLeeCJ/openjev. Model checkpoint rights remain separate; no weights or font files are redistributed.
