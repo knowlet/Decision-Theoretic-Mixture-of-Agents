@@ -71,7 +71,8 @@
     "No human preferences",
     "Hosted CPU timings cannot be compared with published GPU or service speedups",
     "192 test groups across six existing benchmarks remain a pilot, not global superiority evidence",
-    "gqa candidates were produced with image access that the selector never has, so that dataset is not a clean text-only reasoning comparison"
+    "gqa candidates were produced with image access that the selector never has, so that dataset is not a clean text-only reasoning comparison",
+    "Two independent hosted executions of this identical pinned pipeline did not reproduce every selector decision, although every symbolic control row was identical; the paired intervals condition on one recorded execution and exclude that run-to-run component"
   ],
   "request_fixture": "Candidate error estimates are rounded to 8 decimal places before rendering, so a case serializes to byte-identical request text on every host. Estimates come from a fit, and re-fitting under a different BLAS build moves their last bits; the v1.4 pilot serialized full precision and needed a ULP search to recover 464 recorded request hashes. Rounding is far below any decision-relevant precision and removes the failure mode by construction rather than recovering from it."
 }

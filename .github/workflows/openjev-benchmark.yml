@@ -279,7 +279,8 @@ jobs:
           v=json.load(open('verification.json'))
           e=v['experiment_evidence']
           assert e['all_gates_passed'] and e['n_datasets']==6 and e['n_test']==192 and e['n_development']==96
-          assert e['new_llm_api_calls']==e['jev_proprietary_calls']==e['cera_training_steps']==e['worker_generation_calls']==0
+          assert all(m['new_llm_api_calls']==m['jev_proprietary_calls']==m['cera_training_steps']==m['worker_generation_calls']==0 for m in e['model_runs'])
+          assert e['total_local_selector_forwards']==sum(m['new_primary_local_forwards']+m['new_robustness_local_forwards']+m['warmup_forwards'] for m in e['model_runs'])
           assert v['experiment_commit']==os.environ['SOURCE_COMMIT']
           assert v['reporting_commit']==os.environ['GITHUB_SHA']
           assert all(s['failures']==s['skipped']==0 for s in v['test_suites'])

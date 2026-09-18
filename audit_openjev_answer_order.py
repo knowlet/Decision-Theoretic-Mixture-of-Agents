@@ -18,7 +18,7 @@ def run(inputs,cache,out):
     cases,*_=b.prepare(cache);mapping={c['id']:c for c in cases};rows=[]
     for model in b.MODELS:
         frame=pd.read_csv(inputs/model/'order_robustness.csv')
-        if len(frame)!=32 or frame.id.duplicated().any():raise ValueError('Probe set changed')
+        if len(frame)!=b.ORDER_N*len(b.DATASETS) or frame.id.duplicated().any():raise ValueError('Probe set changed')
         for r in frame.itertuples():
             case=mapping[r.id]
             if case['split']!='test':raise ValueError('Non-test probe')
