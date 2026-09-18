@@ -39,22 +39,54 @@ out-of-sample setting for the joint model, still leaves it behind agreement-only
 is not that a 16-case development split picks the wrong strength; the direction and confidence
 observation model itself is not identifiable from 32 calibration cases.
 
-## What this implies for the next step
 
-The limiting factor is calibration data, not the estimator. The four tasks each hold far more
-labelled rows than the 32 used for fitting: BoolQ about 9,400 in train, OCNLI tens of thousands,
-CLINC 7,500 in scope plus 100 out-of-scope in train, TMMLU+ per-subject train splits. Enlarging the
-fit split is therefore a calibration-only change: the development and test groups stay exactly as
-they are, so it can be declared before any test outcome is examined, which is the condition for it
-to be a legitimate revision rather than a post-hoc search.
+## What the estimation fixes first implied (superseded below)
 
-The cost is inference, not analysis. Scoring 256 fit cases per task instead of 32 multiplies the
-forwards by roughly 3.4, which the sharded runner can absorb by moving from twelve shards to about
-twenty-four so each stays inside the current per-shard timeout. If the richer controller still fails
-to beat the equality-only one after that, the honest conclusion changes from "under-calibrated" to
-"the extra signals do not carry decision-relevant information at this scale", and the sensible role
-for a Jev-like model becomes a competence signal feeding the decision layer rather than the layer
-itself.
+At the time this experiment was written I read the inversion as an under-calibration problem: each
+task holds thousands of further labelled training rows, the development and test groups would stay
+untouched, and the cost would be about 3.4 times the inference. The calibration-size curve below
+removes that reading, and the section after it states what replaces it.
+
+## The calibration-size curve removes that recommendation
+
+`jevbench_learning_curve.py` refits both controllers on random subsets of the 32 fit cases the
+pilot already scored, thirty-two subsets per size, and scores every fit on the same 32 held-out
+cases. Macro over the four tasks:
+
+| Fit cases | Joint, in sample | Equality, in sample | Joint, held out | Equality, held out | Joint minus equality | Spread across subsets |
+|---:|---:|---:|---:|---:|---:|---:|
+| 4 | 0.0443 | 0.0748 | 0.2361 | 0.2513 | −0.0152 | 0.0659 |
+| 8 | 0.0503 | 0.1063 | 0.2246 | 0.2289 | −0.0044 | 0.0536 |
+| 16 | 0.0628 | 0.1312 | 0.2051 | 0.2078 | −0.0027 | 0.0453 |
+| 24 | 0.0702 | 0.1441 | 0.2053 | 0.1943 | +0.0110 | 0.0422 |
+| 32 | 0.0729 | 0.1434 | 0.2027 | 0.1769 | +0.0258 | 0.0000 |
+
+Three things are visible. Both controllers get better on held-out cases as calibration grows
+(0.2361 to 0.2027 and 0.2513 to 0.1769), so more calibration data helps the pipeline. The
+equality-only controller improves faster, so the difference moves the same way at every step and
+changes sign somewhere between 16 and 24 cases: the joint controller starts ahead and ends behind.
+And that movement is directional rather than resolved, because the spread across thirty-two subsets
+is larger than the difference at every size below the full fit set.
+
+Per task the same movement shows up: the joint controller is ahead on BoolQ, OCNLI and TMMLU+ at
+four fit cases and behind on all four by 32, with CLINC positive throughout.
+
+This supersedes the recommendation in the previous section. I had proposed enlarging the fit split
+on the reading that the extra signals were under-calibrated. Within the range the pilot covers, the
+opposite trend appears: calibration growth erodes the joint controller's advantage rather than
+recovering it. A linear projection would put it far behind at 256 cases, which is a hypothesis and
+not evidence, but the measured direction is enough to say that spending 3.4 times the inference on
+more of the same calibration data is not the next experiment worth running.
+
+What remains open is structural rather than about sample size: which observation of a Jev-like model
+carries decision-relevant information that agreement does not already contain. Treating the model as
+a competence signal for the decision layer, instead of the layer itself, is the version of that
+question this evidence points at, and it is cheap to test on the records already published.
+
+
+`jevbench_learning_curve.py` refits both controllers on random subsets of the 32 fit cases the
+pilot already scored, eight subsets per size, and scores every fit on the same 32 held-out cases.
+Macro over the four tasks:
 
 ## Scope
 
