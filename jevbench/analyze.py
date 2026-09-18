@@ -79,6 +79,7 @@ def evaluate(policy,obs,indices,rows,y,timing,algorithm,defer,agreement=False):
     return make_frame([r[0] for r in answers],[r[1] for r in answers],[r[2] for r in answers],indices,rows,y,timing,algorithm,defer,elapsed)
 
 def objective(policy,obs,y,indices,agreement=False,defer=.25):
+    if not agreement:defer=policy.defer
     values=[]
     for i in indices:
         pred,used,_=policy.execute(lambda m:int(obs[i,m]),defer=defer) if agreement else policy.execute(lambda m:int(obs[i,m]))
