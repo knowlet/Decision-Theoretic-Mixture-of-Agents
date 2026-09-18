@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import transfer_study as t
 
-REQUIRED=('per_case.csv','summary.csv','paired_comparisons.csv','selection.csv','cost_sweep.csv','refresh_costs.csv','source_audit.json','provenance.json','split_manifest.csv','controller_timing.csv','calibration_resources.csv','numeric_tolerance_audit.csv','numeric_disagreements.csv','label_range_audit.csv','audit_scope.json')
+REQUIRED=('per_case.csv','summary.csv','paired_comparisons.csv','selection.csv','cost_sweep.csv','refresh_costs.csv','source_audit.json','provenance.json','split_manifest.csv','controller_timing.csv','calibration_resources.csv','numeric_tolerance_audit.csv','numeric_disagreements.csv','label_range_audit.csv','audit_scope.json','policy_discrimination.csv')
 
 def check_xml(path):
     root=ET.parse(path).getroot();cases=list(root.iter('testcase'))
@@ -65,12 +65,12 @@ def verify(first,second,xml,out):
             if a.read_bytes()!=b.read_bytes():raise AssertionError('Nondeterministic output: '+name)
         checks.append({'file':name,'sha256_first':t.digest(a),'sha256_second':t.digest(b),'byte_identical':t.digest(a)==t.digest(b)})
     protocol=t.digest(t.ROOT/'transfer_protocol.json')
-    if protocol!='ee7945c146b99a3aad5072db30aca208e7d0d0979060927826f4ea6b8d14032a':raise AssertionError('Locked protocol changed')
+    if protocol!='40e677546278ad27fa7d58c6437afe969a5054d3f8d5d0fc4cab1d3c4d23165c':raise AssertionError('Locked protocol changed')
     provenance=json.loads((first/'provenance.json').read_text())
     assert provenance['protocol_sha256']==protocol and provenance['new_llm_api_calls']==provenance['jev_calls']==provenance['cera_agent_training_steps']==0
     try:commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
     except (subprocess.CalledProcessError,FileNotFoundError):commit='local-uncommitted-worktree'
-    record={'version':'1.3.0','tested_commit':commit,'tests':count,'failures':0,'skipped':0,'ledger_rows':case_count,
+    record={'version':'1.5.0','tested_commit':commit,'tests':count,'failures':0,'skipped':0,'ledger_rows':case_count,
         'separate_process_runs':2,'comparisons':checks,'runtime_only_columns_excluded':skipped_runtime,
         'protocol_sha256':protocol,'all_gates_passed':True,'source':provenance,
         'run_url':os.getenv('RESEARCH_RUN_URL'),'limitations':'Same-code deterministic rerun, not independent scientific replication. Archived model-pool replacement is not within-agent continual training. Jev is not run.'}

@@ -1,4 +1,4 @@
-import itertools,math
+import itertools,math,re
 import numpy as np
 import pandas as pd
 import pytest
@@ -191,3 +191,71 @@ def test_skipped_test_rejected(tmp_path):
     from ci_transfer import check_xml
     path=tmp_path/'tests.xml';path.write_text('<testsuite>'+'<testcase/>'*201+'<testcase><skipped/></testcase></testsuite>')
     with pytest.raises(AssertionError):check_xml(path)
+
+@pytest.mark.parametrize('value,expected',[
+    ('a pedestrian','pedestrian'),('Left','left'),('Yes','yes'),('the table','table'),
+    ('Two people','2 people'),('UPS truck','ups truck'),('  ',None),('',None),('NaN',None),
+])
+def test_gqa_answer_identity(value,expected):
+    assert t.normalize_answer(value,'gqa')==expected
+
+@pytest.mark.parametrize('value,dataset,expected',[
+    ('yes','jigsaw','yes'),('No','jigsaw','no'),('toxic','jigsaw','yes'),('non-toxic','jigsaw','no'),
+    (':','jigsaw',None),('maybe','jigsaw',None),('Unknown','gqa','unknown'),
+])
+def test_added_dataset_answer_identity(value,dataset,expected):
+    assert t.normalize_answer(value,dataset)==expected
+
+def test_gqa_gold_uses_the_same_identity():
+    assert t.normalize_gold('a pedestrian','gqa')=='pedestrian'
+    assert t.normalize_gold('Yes','gqa')=='yes'
+
+@pytest.mark.parametrize('value,expected',[
+    ('0.0','no'),('0.5','no'),('0.5000001','yes'),('1.0','yes'),('nan',None),('abc',None),
+])
+def test_jigsaw_verdict_threshold_is_strict(value,expected):
+    # The archive's own label column treats exactly 0.5 as non-toxic; verified
+    # against all comparable pairs rather than assumed.
+    assert t.normalize_gold(value,'jigsaw')==expected
+
+@pytest.mark.parametrize('dataset',['gqa','jigsaw','gsm8k','mmlu','strategyqa','svamp','dices'])
+def test_upstream_debug_artifact_is_never_an_answer(dataset):
+    assert t.normalize_answer('City stre[DEBUG] idx=120 | pred=Horse',dataset) is None
+
+def test_gqa_prompt_keeps_image_identity():
+    one="{'question': 'The vehicle is in front of who?', 'image_id': 2374257}"
+    two=one.replace('2374257','2374258')
+    assert t.question_text(one,'gqa').endswith('image 2374257')
+    assert t.group_id(t.question_text(one,'gqa'))!=t.group_id(t.question_text(two,'gqa'))
+
+@pytest.mark.parametrize('bad',["{'question': 'q'}","{'image_id': 1}","__import__('os').system('echo injected')"])
+def test_gqa_prompt_schema_and_injection_rejected(bad):
+    with pytest.raises(ValueError):t.question_text(bad,'gqa')
+
+def test_primary_datasets_match_locked_protocol():
+    import json
+    p=json.loads((t.ROOT/'transfer_protocol.json').read_text())
+    assert tuple(p['primary_datasets'])==t.PRIMARY_DATASETS
+    assert set(t.PRIMARY_DATASETS)<=set(p['datasets'])
+    assert set(p['source_sha256'])==set(p['datasets'])
+    assert all(re.fullmatch('[0-9a-f]{64}',h) for h in p['source_sha256'].values())
+    assert p['ordinal_exploratory_dataset'] not in t.PRIMARY_DATASETS
+
+def test_locked_protocol_digest_matches_ci_pin():
+    pinned=re.search(r"if protocol!='([0-9a-f]{64})'",(t.ROOT/'ci_transfer.py').read_text()).group(1)
+    assert pinned==t.digest(t.ROOT/'transfer_protocol.json')
+
+def test_openjev_protocol_and_shards_match_the_widened_pilot():
+    import json
+    from openjev_sharded import SHARDS
+    p=json.loads((t.ROOT/'openjev_protocol.json').read_text())
+    assert tuple(p['datasets'])==t.PRIMARY_DATASETS
+    assert p['per_dataset']=={'test_groups':32,'development_groups':16,'reverse_order_test_groups':8,'repeated_forward_test_groups':2}
+    assert all(s>0 for s in SHARDS.values()) and set(SHARDS)=={'qwen35-4b','qwen35-0.8b'}
+
+def test_transfer_protocol_keeps_the_published_split_salt():
+    # Changing this string would silently reshuffle the four datasets whose
+    # splits are already published, so it must stay byte-identical.
+    import json
+    p=json.loads((t.ROOT/'transfer_protocol.json').read_text())
+    assert 'dtmoa-proeval-v13' in p['split']

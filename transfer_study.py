@@ -1,4 +1,8 @@
-"""v1.3 ProEval replay: fixed and replaced model pools, not CERA/Jev reproduction.
+"""v1.5 ProEval replay: six binary tasks plus a quarantined ordinal diagnostic.
+
+Fixed and replaced model pools, not a CERA/Jev reproduction. The four v1.3
+datasets keep their published split salt verbatim; gqa and jigsaw are added by
+the same rule so the earlier per-dataset results stay comparable.
 
 Only acquired answer equality/INVALID states reach the sequential controller.
 Labels and unacquired responses remain inside the evaluator. Archived errors are
@@ -22,11 +26,32 @@ from sklearn.linear_model import Ridge
 ROOT = Path(__file__).resolve().parent
 N, BUDGET, DEFER = 4, 3, 0.25
 MODES = ('single','fixed3','static','myopic','bellman','disagreement','majority3','prompt_top1','cumulative_score')
-PRIMARY_DATASETS = ('gsm8k','svamp','mmlu','strategyqa')
+PRIMARY_DATASETS = ('gsm8k','svamp','mmlu','strategyqa','gqa','jigsaw')
 POOL_NAMES = {
     'legacy': ('gpt_4o','claude35_haiku','gemini25_flash','gemma3_12b'),
     'replacement': ('gpt5_2','claude45_sonnet','gemini3_flash','gemma3_27b'),
 }
+# VQA-style answer normalization for GQA. This is a documented subset of the
+# published VQA answer normalizer: punctuation and articles are dropped and
+# small number words are folded to digits. It is not the full official
+# normalizer (no contraction or period-digit handling), so agreement patterns
+# and the strict audit are literal-normalized answers, never semantic matches.
+GQA_ARTICLES = frozenset(('a','an','the'))
+GQA_NUMBER_WORDS = {'zero':'0','one':'1','two':'2','three':'3','four':'4','five':'5','six':'6','seven':'7','eight':'8','nine':'9','ten':'10'}
+# Jigsaw archival predictions are verbal toxicity verdicts. The archive's own
+# binary label column remains the primary error; this only canonicalizes the
+# answer identity used for agreement and for the separate strict audit.
+JIGSAW_VERDICTS = {'yes':{'yes','true','1','1.0','toxic','y','t'},'no':{'no','false','0','0.0','non-toxic','non toxic','nontoxic','n','f'}}
+# The archive's derived verdict is toxic iff the annotator toxic-fraction is
+# strictly greater than 0.5. This was verified against the archive's own binary
+# label column on every comparable pair, not assumed.
+JIGSAW_TOXIC_THRESHOLD = Decimal('0.5')
+# The pinned public gqa release contains a handful of cells whose contents are
+# a data-generation debug string rather than a model answer. They are treated as
+# unparseable answers and counted in the source audit instead of being scored as
+# if they were real responses. This is a defect of the upstream artifact, not a
+# property of the models.
+UPSTREAM_ARTIFACT_MARKERS = ('[DEBUG]',)
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -64,6 +89,16 @@ def question_text(value: str, dataset: str) -> str:
         if not isinstance(obj,dict) or 'question' not in obj or 'choices' not in obj:
             raise ValueError('MMLU prompt schema')
         return str(obj['question'])+'\n'+'\n'.join(map(str,obj['choices']))
+    if dataset == 'gqa':
+        # Literal-evaluated only: the stored prompt is a dict repr with an
+        # integer image id. The image id enters the group key so that the same
+        # question text asked about different images is not merged.
+        tree = ast.parse(value, mode='eval').body
+        if not isinstance(tree, ast.Dict): raise ValueError('GQA prompt is not a dict')
+        obj = {}
+        for key, node in zip(tree.keys, tree.values): obj[ast.literal_eval(key)] = ast.literal_eval(node)
+        if 'question' not in obj or 'image_id' not in obj: raise ValueError('GQA prompt schema')
+        return str(obj['question'])+'\nimage '+str(obj['image_id'])
     return str(value)
 
 def group_id(text: str) -> str:
@@ -77,6 +112,7 @@ def normalize_answer(value, dataset: str) -> str | None:
     """Normalize the archive's answer column only; do not look at gold/reasoning."""
     s = str(value).strip()
     if not s or s.casefold() in ('nan','none','null'): return None
+    if any(m in s for m in UPSTREAM_ARTIFACT_MARKERS): return None
     if dataset in ('gsm8k','svamp'):
         s=s.replace(',','')
         if not re.fullmatch(r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?:/[+-]?\d+)?',s): return None
@@ -88,6 +124,13 @@ def normalize_answer(value, dataset: str) -> str | None:
         return {'yes':'yes','true':'yes','no':'no','false':'no'}.get(s.casefold())
     if dataset=='mmlu':
         return s.upper() if s.upper() in ('A','B','C','D') else None
+    if dataset=='gqa':
+        import unicodedata
+        folded=''.join(c for c in unicodedata.normalize('NFKC',s).casefold() if not unicodedata.combining(c))
+        tokens=[GQA_NUMBER_WORDS.get(x,x) for x in re.sub(r'[^0-9a-z]+',' ',folded).split()]
+        return ' '.join(x for x in tokens if x not in GQA_ARTICLES) or None
+    if dataset=='jigsaw':
+        return next((k for k,v in JIGSAW_VERDICTS.items() if s.casefold() in v),None)
     if dataset=='dices':
         try:
             n=Decimal(s)
@@ -99,6 +142,13 @@ def normalize_gold(value, dataset: str) -> str | None:
     s=str(value)
     if dataset=='gsm8k':
         return normalize_answer(s.rsplit('####',1)[-1],dataset) if '####' in s else None
+    if dataset=='jigsaw':
+        # The archive stores the annotator toxic-fraction, not the derived
+        # verdict. Threshold it explicitly; the primary error label stays the
+        # archive's own binary column.
+        try: n=Decimal(s.strip())
+        except (ValueError,InvalidOperation,OverflowError): return None
+        return None if not n.is_finite() else ('yes' if n>JIGSAW_TOXIC_THRESHOLD else 'no')
     if dataset=='mmlu':
         try:
             d=Decimal(s)
@@ -144,12 +194,14 @@ def load_dataset(path: Path, dataset: str, expected_sha: str) -> tuple[Data,dict
         'duplicate_group_rows':len(groups)-len(set(groups)),
         'split_counts':{s:int((splits==s).sum()) for s in ('train','dev','test')},'pools':{}}
     for p,ms in POOL_NAMES.items():
-        a=np.array([[normalize_answer(v,dataset) for v in d['prediction_'+m]] for m in ms],dtype=object).T
+        raw=[[str(v) for v in d['prediction_'+m]] for m in ms]
+        a=np.array([[normalize_answer(v,dataset) for v in col] for col in raw],dtype=object).T
         e=d[['label_'+m for m in ms]].astype(float).to_numpy()
         g=np.array([normalize_gold(v,dataset) for v in d.ground_truth],dtype=object)
         se=np.where(g[:,None]!=None,(a!=g[:,None]).astype(float),np.nan) if dataset!='dices' else np.full(e.shape,np.nan)
         answers[p]=a;errors[p]=e;strict[p]=se
         report['pools'][p]={'models':ms,'invalid_answers_per_model':dict(zip(ms,(a==None).sum(axis=0).tolist())),
+            'upstream_artifact_answer_cells':int(sum(any(m in cell for m in UPSTREAM_ARTIFACT_MARKERS) for col in raw for cell in col)),
             'strict_gold_unparseable_rows':int(sum(x is None for x in g)) if dataset!='dices' else None,
             'strict_vs_upstream_error_disagreements':int(np.sum(np.isfinite(se)&(se!=e))) if dataset!='dices' else None}
     for s in ('train','dev','test'):
@@ -414,6 +466,15 @@ def run(cache:Path,out:Path,bootstrap=2000):
     binary_manifest=manifest[manifest.dataset.isin(PRIMARY_DATASETS)]
     cross=int((binary_manifest.groupby('group').dataset.nunique()>1).sum())
     if cross:raise AssertionError('Cross-dataset repeated groups require joint bootstrap')
+    # Per-dataset discrimination diagnostic. A task where every decision-theoretic
+    # policy takes the same action carries no comparison information; that is a
+    # property of the archived answers and the declared objective, and it is
+    # reported rather than silently dropped from the primary average.
+    core=frame[frame.policy.isin(['single','static','myopic','bellman'])]
+    diag=core.groupby(['dataset','phase','price'],as_index=False).agg(objective_min=('objective','min'),objective_max=('objective','max'),mean_queries=('queries','mean'),deferral_rate=('answered',lambda s:1.-s.mean()),n=('objective','size'))
+    diag['objective_spread']=diag.objective_max-diag.objective_min
+    diag['policies_agree_exactly']=diag.objective_spread<=1e-12
+    diag.to_csv(out/'policy_discrimination.csv',index=False)
     comparison(frame,bootstrap).to_csv(out/'paired_comparisons.csv',index=False)
     pd.DataFrame(selections).to_csv(out/'selection.csv',index=False)
     pd.concat(sweeps,ignore_index=True).to_csv(out/'cost_sweep.csv',index=False)
@@ -427,7 +488,7 @@ def run(cache:Path,out:Path,bootstrap=2000):
             np.savez_compressed(out/f'traces_{d.dataset}_{pool}.npz',
                 patterns=np.array([canonical(row) for row in d.answers[pool]],dtype=np.int8),
                 errors=d.errors[pool],strict_errors=d.strict_errors[pool],ids=d.ids.astype(str),groups=d.groups.astype(str),splits=d.splits.astype(str))
-    write_json(out/'provenance.json',dict(version='1.3.0',protocol_sha256=digest(ROOT/'transfer_protocol.json'),
+    write_json(out/'provenance.json',dict(version='1.5.0',protocol_sha256=digest(ROOT/'transfer_protocol.json'),
         source_revision=protocol['source_revision'],new_llm_api_calls=0,jev_calls=0,cera_agent_training_steps=0,
         binary_questions=sum(len(d) for d in all_data if d.dataset in PRIMARY_DATASETS),ordinal_questions=sum(len(d) for d in all_data if d.dataset=='dices'),
         archived_response_records=sum(len(d)*8 for d in all_data),binary_test_questions=int(((manifest.split=='test')&manifest.dataset.isin(PRIMARY_DATASETS)).sum()),

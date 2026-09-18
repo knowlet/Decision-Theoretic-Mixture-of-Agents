@@ -27,7 +27,7 @@ jobs:
           import csv,hashlib,io,json,pathlib,urllib.request,concurrent.futures,subprocess
           root=pathlib.Path('source-audit')
           rev='9d37b037d1d91f4b78a7ddd74a43a8aecb344c66'
-          names=('gsm8k','svamp','mmlu','strategyqa','dices')
+          names=('gsm8k','svamp','mmlu','strategyqa','gqa','jigsaw','dices')
           def fetch_dataset(name):
               url=f'https://raw.githubusercontent.com/google-deepmind/proeval/{rev}/data/{name}_predictions.csv'
               with urllib.request.urlopen(url,timeout=180) as response: data=response.read()

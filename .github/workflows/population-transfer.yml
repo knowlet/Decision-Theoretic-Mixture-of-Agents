@@ -15,7 +15,7 @@ concurrency:
 jobs:
   transfer:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     env:
       OPENBLAS_NUM_THREADS: '1'
       OMP_NUM_THREADS: '1'
@@ -89,6 +89,10 @@ jobs:
           assert p['tested_commit']==os.environ['GITHUB_SHA']
           assert p['source']['new_llm_api_calls']==p['source']['jev_calls']==p['source']['cera_agent_training_steps']==0
           PY
+          # The transfer layer alone already has its versioned release. The combined
+          # v1.5 report, which embeds this layer plus the widened OpenJev head-to-head,
+          # is published by the OpenJev paper workflow so that one version number
+          # corresponds to one evidence bundle. This job only attests the transfer run.
           if gh release view v1.3.0 >/dev/null 2>&1; then
             echo 'v1.3.0 already exists; existing source and assets are not overwritten.'
           else

@@ -1,39 +1,125 @@
 {
-  "version": "1.3.0",
-  "status": "Prospective local specification after inspecting source schema and three example rows, before v1.3 policy outcomes; not external preregistration. All additions follow earlier v1.2 results.",
+  "version": "1.5.0",
+  "status": "Prospective local specification for the two added datasets, written after inspecting their schema, split counts and answer vocabularies and after checking the derived jigsaw verdict rule against the archive's own label column, but before any v1.5 policy outcome. Not external preregistration. No earlier v1.3/v1.4 field is retuned below.",
   "source": "google-deepmind/proeval",
   "source_revision": "9d37b037d1d91f4b78a7ddd74a43a8aecb344c66",
-  "datasets": ["gsm8k", "svamp", "mmlu", "strategyqa", "dices"],
-  "primary_datasets": ["gsm8k", "svamp", "mmlu", "strategyqa"],
+  "datasets": [
+    "gsm8k",
+    "svamp",
+    "mmlu",
+    "strategyqa",
+    "gqa",
+    "jigsaw",
+    "dices"
+  ],
+  "primary_datasets": [
+    "gsm8k",
+    "svamp",
+    "mmlu",
+    "strategyqa",
+    "gqa",
+    "jigsaw"
+  ],
   "ordinal_exploratory_dataset": "dices",
+  "surface_form_dataset": "gqa",
   "source_sha256": {
     "gsm8k": "81c95040812afa429807acab028ec2caee97eaa0162a135829b72b8d9d9d9736",
     "svamp": "64e38a7b1fd26033154a1aa0912c29cf37fcaa785f48f786e5c1653ee5f02908",
     "mmlu": "703892b33a80701f31ea87c7768f7c1de9d33f261089239234a8b9ac16596cb0",
     "strategyqa": "58d5c71732bded0a4b9ea43146e41f3408e29dc03af4245236ce52bf24975b32",
+    "gqa": "89949cd9e6d12150f9d17cdbf3e9b9f8f1d3cb70712e84229248bc5883bd421c",
+    "jigsaw": "450c45a78d38c4936a892f10dbb44d8ad3913d9745e49c9bffc6a81412dc5af8",
     "dices": "acf51f8af0e8cf9469b9b3c47cda15147ae7ba7b2e566cdd20f98f31b373888f"
   },
   "pools": {
-    "legacy": ["gpt_4o", "claude35_haiku", "gemini25_flash", "gemma3_12b"],
-    "replacement": ["gpt5_2", "claude45_sonnet", "gemini3_flash", "gemma3_27b"]
+    "legacy": [
+      "gpt_4o",
+      "claude35_haiku",
+      "gemini25_flash",
+      "gemma3_12b"
+    ],
+    "replacement": [
+      "gpt5_2",
+      "claude45_sonnet",
+      "gemini3_flash",
+      "gemma3_27b"
+    ]
   },
-  "pool_selection": "Fixed model identities from archive metadata, not chosen by measured accuracy; slots deliberately span provider families. Not chronological within-agent checkpoints.",
-  "split": "SHA256 of normalized question (MMLU question+choices), salt dtmoa-proeval-v13, thresholds 0.6/0.8. Exact groups cannot cross train/dev/test, including across pools.",
+  "pool_selection": "Fixed model identities from archive metadata, not chosen by measured accuracy; slots deliberately span provider families. Not chronological within-agent checkpoints. All eight identities are present in every one of the six primary datasets.",
+  "split": "SHA256 of normalized question (MMLU question+choices, gqa question+image id), salt string dtmoa-proeval-v13 retained verbatim from v1.3 so the four previously published datasets keep their exact published splits and remain directly comparable; gqa and jigsaw are assigned by the same rule. Thresholds 0.6/0.8. Exact groups cannot cross train/dev/test, including across pools.",
   "budget": 3,
   "primary_query_price": 0.01,
-  "query_price_sweep": [0.0, 0.005, 0.01, 0.02, 0.05],
+  "query_price_sweep": [
+    0,
+    0.005,
+    0.01,
+    0.02,
+    0.05
+  ],
   "defer_loss": 0.25,
-  "prior_strengths": [1.0, 10.0, 100.0],
-  "policies": ["single", "fixed3", "static", "myopic", "bellman", "disagreement", "majority3", "prompt_top1", "cumulative_score"],
+  "prior_strengths": [
+    1,
+    10,
+    100
+  ],
+  "policies": [
+    "single",
+    "fixed3",
+    "static",
+    "myopic",
+    "bellman",
+    "disagreement",
+    "majority3",
+    "prompt_top1",
+    "cumulative_score"
+  ],
   "policy_class": "Conditional empirical answer-agreement partition; selection among acquired answers or defer. Prompt baselines alone additionally use hashed character TF-IDF query features and ridge error prediction; report this information difference. No free-text synthesis.",
-  "prompt_estimator": {"features": 2048, "ngram_range": [3,5], "ridge_alpha": 10.0, "thresholds": [0.7,1.4,2.1]},
+  "prompt_estimator": {
+    "features": 2048,
+    "ngram_range": [
+      3,
+      5
+    ],
+    "ridge_alpha": 10,
+    "thresholds": [
+      0.7,
+      1.4,
+      2.1
+    ]
+  },
   "cumulative_score_scope": "Mechanism-inspired, NOT a CERA-MoA reproduction: no hidden-state backbone, anchor loss, DAPO/GSPO, LoRA or agent training. NOT a Jev reproduction.",
-  "phases": ["legacy_id", "replacement_frozen", "replacement_refit", "refresh_50", "refresh_200"],
+  "answer_semantics": {
+    "gqa": "Free-form short answers. Answer identity uses a documented subset of the VQA normalizer (NFKC casefold, punctuation removed, articles dropped, number words zero-to-ten folded to digits); it is not the full official normalizer and claims no synonym, plural or hypernym matching. Prompt baselines cannot see the referenced image, because the archive stores the image id but not the pixels.",
+    "jigsaw": "Archival predictions are verbal toxicity verdicts (yes/no). Answer identity folds the common spellings of each verdict. The archive's own binary error column stays the primary label. Separately, the derived toxicity verdict is annotator-fraction > 0.5; that rule was verified against the archive's own label column and reproduces it on all 11,998 comparable pairs."
+  },
+  "upstream_artifact": "Nine gqa rows carry a data-generation debug string instead of a model answer in one prediction cell. Such cells are treated as unparseable answers and counted in the source audit; the archive's own label for them is not silently rescored. Confined to the added dataset; the four v1.3 datasets are unaffected.",
+  "phases": [
+    "legacy_id",
+    "replacement_frozen",
+    "replacement_refit",
+    "refresh_50",
+    "refresh_200"
+  ],
   "refresh": "Deterministic non-test calibration prefix; four archived responses per refreshed question; full-information feedback, not bandit-selected feedback. Refresh queries charged and deployment break-even reported, no target-test feedback.",
-  "primary_comparisons": ["replacement_refit:bellman-static", "replacement_refit:bellman-myopic", "replacement_frozen:bellman-replacement_refit:bellman"],
+  "primary_comparisons": [
+    "replacement_refit:bellman-static",
+    "replacement_refit:bellman-myopic",
+    "replacement_frozen:bellman-replacement_refit:bellman"
+  ],
   "inference": "Paired group bootstrap within each binary dataset, macro average; 2000 draws fixed seed 130918. Intervals conditional on fitted policies; no equivalence claim when zero included. No p-values promised.",
   "quality": "Primary binary loss is archived error label, never used as observation. Strict response-only normalization vs archive gold is a separate post-selection audit, not retuning. DICES archived ordinal error reported separately, no probability-of-correctness or ECE claim.",
   "calibration": "Brier score and ten equal-width-bin ECE on answered binary cases only; independent gold calibration added as secondary audit. No Jev-calibration claim.",
   "cost_scope": "Uniform assumed price per archived answer, not actual dollars, token counts or inference latency. Control CPU benchmark separate; no artificial LLM latency.",
-  "limits": ["No CERA-MoA fine-tuning", "No Jev API calls", "No live LLM inference", "No human preference elicitation", "No temporal causal identification", "Dataset familiarity/contamination not excluded", "One archive is not five independent data-collection pipelines"]
+  "limits": [
+    "No CERA-MoA fine-tuning",
+    "No Jev API calls",
+    "No live LLM inference",
+    "No human preference elicitation",
+    "No temporal causal identification",
+    "Dataset familiarity/contamination not excluded, and the added tasks are widely used public benchmarks",
+    "One archive is not six independent data-collection pipelines",
+    "gqa answers in the archive were produced with access to an image that the replay never sees; only answer selection is replayed, never answer generation",
+    "jigsaw ground truth is an annotator toxic-fraction thresholded at 0.5, not a per-annotator decision",
+    "Six coarser-grained datasets still do not represent open-ended MoA debate, tool use or value disagreement"
+  ]
 }
