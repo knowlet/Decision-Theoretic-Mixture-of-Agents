@@ -1,0 +1,40 @@
+name: Answer-aware optimizer validation
+on:
+  push:
+    branches: ['optimize/answer-aware-router']
+    paths: ['.github/workflows/optimizer.yml', 'optimizer_protocol.json']
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Hash-verified source snapshot, no performance claim
+        run: |
+          mkdir -p optimizer-source/data
+          git archive --format=tar.gz --output=optimizer-source/source.tar.gz HEAD
+          python - <<'PY'
+          import json,pathlib,hashlib,urllib.request,concurrent.futures
+          p=json.load(open('transfer_protocol.json'));root=pathlib.Path('optimizer-source')
+          def download(name):
+              url=f"https://raw.githubusercontent.com/google-deepmind/proeval/{p['source_revision']}/data/{name}_predictions.csv"
+              with urllib.request.urlopen(url,timeout=180) as r:data=r.read()
+              sha=hashlib.sha256(data).hexdigest();assert sha==p['source_sha256'][name]
+              (root/'data'/f'{name}_predictions.csv').write_bytes(data)
+              return {'name':name,'sha256':sha,'bytes':len(data)}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:rows=list(pool.map(download,p['datasets']))
+          (root/'manifest.json').write_text(json.dumps(rows,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: optimizer-source-${{ github.run_id }}
+          path: optimizer-source/
+          retention-days: 2
