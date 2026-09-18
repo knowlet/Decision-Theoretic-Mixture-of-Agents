@@ -42,7 +42,33 @@ once the quantile convention is aligned: `verify_jevbench.py` uses linear interp
 same convention as the numpy and pandas defaults used by `jevbench.analyze`. Before that
 alignment the two differed only by the percentile definition, never by a decision.
 
-## What the numbers do and do not say
+## Where the fitted controller gains and loses
+
+`jevbench_fitgap.py` refits each policy exactly as the analysis does and then scores the same
+fitted policy on the 32 cases it saw, the 16 development cases used to pick its prior strength,
+and the 32 held-out cases. Macro over the four tasks at deferral loss 0.25:
+
+| Policy | On its 32 fit cases | On development | On the 32 test cases | Test minus fit |
+|---|---:|---:|---:|---:|
+| agreement-only | 0.1434 | 0.2338 | 0.1769 | +0.0334 |
+| direction-only | 0.1130 | 0.2513 | 0.2049 | +0.0919 |
+| joint Bellman | 0.0732 | 0.2508 | 0.2174 | +0.1442 |
+| joint myopic | 0.0732 | 0.2506 | 0.2188 | +0.1456 |
+
+The two columns are inverted. The controller that fits its 32 calibration cases best is the
+worst on held-out cases, and the simplest one has the smallest gap, so at this sample size
+expressiveness is buying in-sample fit and paying for it out of sample.
+
+The prior-strength sweep agrees. For joint Bellman the development minimum sits at strength 4
+while the test minimum sits at the strongest shrinkage, infinite, which means the 16-case
+development split picks the wrong end of the grid. Shrinking to the prior recovers most of the
+loss, but still does not reach agreement-only, so the direction and confidence observation model
+itself is implicated and not only the way it is fitted.
+
+This is a diagnostic about the first pilot, not a verdict on the direction of the research: 32
+fit cases is a very small calibration sample, and the honest reading is that this fitting setup
+cannot yet support the extra parameters it introduces.
+
 
 The ordering is what the capacity difference would suggest: the 0.6B NanoJev is fastest and
 least accurate overall, the 4B System One scorer is slowest on CPU, and decider-2b leads on
@@ -54,3 +80,5 @@ decider model declared language.
 
 Two things are deliberately absent. There is no proprietary TypeSafe Jev call anywhere in the
 evidence, and no training or fine-tuning step was performed to produce these numbers.
+
+## What the numbers do and do not say
