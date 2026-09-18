@@ -36,7 +36,8 @@ def build():
     primary=[x for x in a if x['dataset'] in t.PRIMARY_DATASETS]
     primary_rows=sum(x['retained_rows'] for x in primary);primary_test=sum(x['split_counts']['test'] for x in primary)
     disc=pd.read_csv(R/'policy_discrimination.csv')
-    defer_dominated=sorted(set(disc.loc[(disc.phase=='replacement_refit')&(disc.deferral_rate>=1.),'dataset']))
+    dom=set(disc.loc[(disc.phase=='replacement_refit')&(disc.deferral_rate>=1.),'dataset'])
+    defer_primary=sorted(dom&set(t.PRIMARY_DATASETS));defer_quarantined=sorted(dom-set(t.PRIMARY_DATASETS))
     paired=c[c.dataset=='macro_binary']
     refresh=pd.read_csv(R/'refresh_costs.csv');refresh=refresh[refresh.policy=='bellman']
     calibration=b[(b.phase.isin(['replacement_frozen','replacement_refit']))&(b.policy=='bellman')]
@@ -56,7 +57,8 @@ def build():
        'IDENTICAL':str(sum(x['byte_identical'] for x in evidence['comparisons'])),
        'N_SOURCES':str(len(a)),'N_PRIMARY':str(len(t.PRIMARY_DATASETS)),
        'PRIMARY_ROWS':f'{primary_rows:,}','PRIMARY_TEST':f'{primary_test:,}',
-       'DEFER_DOMINATED':', '.join(defer_dominated) if defer_dominated else 'none',
+       'DEFER_DOMINATED':', '.join(defer_primary) if defer_primary else 'none',
+       'DEFER_QUARANTINED':', '.join(defer_quarantined) if defer_quarantined else 'none',
     }
     for lang in ('en','zh-TW'):
         text=Path(f'transfer_paper.{lang}.md').read_text()

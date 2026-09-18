@@ -69,3 +69,13 @@ def test_widened_pilot_counts_are_derived_and_pinned():
     assert a.CASE_TOTAL==288 and a.ROBUST_TOTAL==(b.ORDER_N+b.REPEAT_N)*nds==60
     from openjev_sharded import SHARDS
     assert SHARDS=={'qwen35-4b':12,'qwen35-0.8b':3}
+
+def test_no_stale_hardcoded_pilot_size():
+    # Regression guard for the v1.5 de-hardcoding: the shard and analysis gates must
+    # derive their case counts from the locked protocol, so the old 128/64/32/40
+    # literals must not reappear in them or in their comments.
+    import re
+    for name in ('analyze_openjev.py','openjev_sharded.py'):
+        source=(b.ROOT/name).read_text()
+        found=sorted(set(re.findall(r'(?<![\w.])(?:128|192|64|32|40)(?![\w.])',source)))
+        assert not found,(name,found)

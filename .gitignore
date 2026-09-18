@@ -16,3 +16,6 @@ paper.*.pdf
 *.toc
 *.log
 *.pyc
+dist-transfer/
+dist-paper/
+dist-openjev/
