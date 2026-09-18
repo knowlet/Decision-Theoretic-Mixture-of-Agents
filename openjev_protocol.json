@@ -62,7 +62,7 @@
   ],
   "uncertainty": "2000 paired question-group bootstraps stratified by dataset and macro averaged; conditional on fixed fit and inference records. Pilot-scale intervals, not a confirmatory SOTA claim.",
   "accounting": "Report worker-acquisition objective separately from measured selector CPU wall time and tokens. No invented dollar conversion. Publish a selector-overhead sensitivity grid; actual worker inference latency is unavailable.",
-  "verification": "Check exact upstream readout hash, checkpoint revision, full loading, matching test IDs, query budget, authorized candidate selection, logits simplex, source hashes and no gold in rendered requests. Repeat repeated_forward_test_groups forward calls and reverse reverse_order_test_groups option sets per dataset per model. These are robustness probes, not independent new tasks. Warmup excluded and counted.",
+  "verification": "Check exact upstream readout hash, checkpoint revision, full loading, matching test IDs, query budget, authorized candidate selection, logits simplex, source hashes and no gold in rendered requests. Repeat repeated_forward_test_groups forward calls and reverse reverse_order_test_groups option sets per dataset per model. These are robustness probes, not independent new tasks. Warmup excluded and counted. Request hashes are compared against this canonical fixture, so a mismatch means the case, panel, split or action contract differs, not that two hosts rounded differently.",
   "limits": [
     "No proprietary TypeSafe Jev calls",
     "No CERA-MoA training",
@@ -72,5 +72,6 @@
     "Hosted CPU timings cannot be compared with published GPU or service speedups",
     "192 test groups across six existing benchmarks remain a pilot, not global superiority evidence",
     "gqa candidates were produced with image access that the selector never has, so that dataset is not a clean text-only reasoning comparison"
-  ]
+  ],
+  "request_fixture": "Candidate error estimates are rounded to 8 decimal places before rendering, so a case serializes to byte-identical request text on every host. Estimates come from a fit, and re-fitting under a different BLAS build moves their last bits; the v1.4 pilot serialized full precision and needed a ULP search to recover 464 recorded request hashes. Rounding is far below any decision-relevant precision and removes the failure mode by construction rather than recovering from it."
 }

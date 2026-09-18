@@ -79,3 +79,19 @@ def test_no_stale_hardcoded_pilot_size():
         source=(b.ROOT/name).read_text()
         found=sorted(set(re.findall(r'(?<![\w.])(?:128|192|64|32|40)(?![\w.])',source)))
         assert not found,(name,found)
+
+def test_request_fixture_is_bit_insensitive_to_estimate_ulp():
+    # The v1.4 pilot failed here: re-fitting on a different host moved the last bits of
+    # the candidate error estimates, so the recorded request hashes no longer matched.
+    # The canonical fixture rounds them, and this test pins that invulnerability.
+    c=case();perturbed=case()
+    perturbed['estimated_errors']={k:v+8.*np.finfo(float).eps*abs(v or 1.) for k,v in c['estimated_errors'].items()}
+    assert perturbed['estimated_errors']!=c['estimated_errors']
+    assert b.hash_object(b.render_request(c))==b.hash_object(b.render_request(perturbed))
+
+def test_request_fixture_precision_is_declared():
+    assert b.ESTIMATE_DECIMALS==8
+    c=case();row=b.render_request(c)
+    for candidate in row['state']['candidates']:
+        text=repr(candidate['estimated_error_from_calibration'])
+        assert len(text.split('.')[-1])<=b.ESTIMATE_DECIMALS

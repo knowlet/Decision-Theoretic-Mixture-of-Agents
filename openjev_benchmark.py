@@ -20,6 +20,14 @@ MODELS={
 DATASETS=t.PRIMARY_DATASETS
 TEST_N,DEV_N,ORDER_N,REPEAT_N=32,16,8,2
 PRICE,DEFER=.01,.25
+# Canonical request fixture precision. The candidate error estimates come from a fit,
+# and re-fitting on a different host moves their last bits; serializing full precision
+# therefore made the same case hash differently on the shards and in the analysis job
+# during the v1.4 pilot, which needed a ULP search to recover the recorded hashes.
+# Rounding to eight decimals keeps every request byte-identical across hosts while
+# staying far below any decision-relevant precision.
+ESTIMATE_DECIMALS=8
+def canonical_estimate(value):return round(float(value),ESTIMATE_DECIMALS)
 
 def hash_object(x):return hashlib.sha256(json.dumps(x,sort_keys=True,ensure_ascii=False,allow_nan=False).encode()).hexdigest()
 
@@ -38,7 +46,7 @@ def select_subset(data,split,n):
 def render_request(case,reverse=False):
     """Only authorized public features; training-derived risks are not gold."""
     panel=case['panel'];answers=case['display_answers'];world_risks=case['estimated_errors']
-    candidates=[{'candidate':int(i),'answer':answers[str(i)],'estimated_error_from_calibration':float(world_risks[str(i)])} for i in panel]
+    candidates=[{'candidate':int(i),'answer':answers[str(i)],'estimated_error_from_calibration':canonical_estimate(world_risks[str(i)])} for i in panel]
     options=[{'id':'emit_'+str(i),'description':'Return candidate '+str(i)+': '+answers[str(i)]} for i in panel]
     options.append({'id':'defer','description':'Do not return a candidate; defer to another decision maker at loss 0.25.'})
     rng=np.random.default_rng(int(case['group'][:8],16))

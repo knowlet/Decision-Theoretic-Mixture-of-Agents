@@ -79,7 +79,8 @@ def finalize(label,incoming,cache,out):
         case_id,kind=record['case_id'],record['kind']
         if kind not in buckets or case_id in buckets[kind] or case_id not in case_map:raise ValueError('Unexpected/duplicate inference')
         request=b.render_request(case_map[case_id],kind=='reverse')
-        assert record['request_sha256']==b.hash_object(request)
+        if record['request_sha256']!=b.hash_object(request):
+            raise AssertionError('Request hash mismatch for '+case_id+' ('+kind+'); re-rendered candidates: '+repr(request['state']['candidates']))
         b.validate_result(record['result'],request);buckets[kind][case_id]=record['result']
     outputs=buckets['primary'];assert set(outputs)==set(case_map) and len(buckets['reverse'])==b.ORDER_N*len(b.DATASETS) and len(buckets['repeat'])==b.REPEAT_N*len(b.DATASETS)
     baselines.to_csv(out/'baselines.csv',index=False);t.write_json(out/'selection.json',selection);t.write_json(out/'calibration_resources.json',resources)
