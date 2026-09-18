@@ -1,6 +1,6 @@
-"""Paired head-to-head analysis and integrity gates. Never asserts our method wins."""
+"""Paired head-to-head analysis and integrity gates. No required winner."""
 from __future__ import annotations
-import argparse,json,math,os
+import argparse,json,os
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -23,6 +23,7 @@ def validate_bundle(path):
     for r in scores:
         p=np.array(r['probabilities']);assert len(p)==4 and np.isfinite(p).all() and (p>=0).all() and abs(p.sum()-1)<1e-6
         assert r['model']['source']==meta['metadata']['source'] and r['model']['revision']==meta['metadata']['revision']
+        assert r['model']['cpu_backend_sha256']==t.digest(t.ROOT/'openjev_sharded.py')
     df=pd.read_csv(path/'per_case.csv',dtype={'sample_id':str})
     assert df.algorithm.nunique()==12 and len(df)==12*128 and not df.duplicated(['dataset','sample_id','algorithm']).any()
     np.testing.assert_allclose(df.objective,df.loss+df.cost,atol=1e-12,rtol=0)
@@ -39,7 +40,9 @@ def validate_bundle(path):
     assert (df.loc[df.answered==0,'loss']==.25).all()
     rep=json.loads((path/'repeat_check.json').read_text());assert len(rep)==8 and all(r['same_argmax'] and r['max_probability_delta']<1e-5 for r in rep)
     assert len(pd.read_csv(path/'order_robustness.csv'))==32
-    assert meta['new_primary_local_forwards']==192 and meta['new_robustness_local_forwards']==40 and meta['warmup_forwards']==1
+    from openjev_sharded import SHARDS
+    assert meta['new_primary_local_forwards']==192 and meta['new_robustness_local_forwards']==40 and meta['warmup_forwards']==SHARDS[meta['selector_model']]
+    assert len(meta['all_worker_provenance'])==meta['warmup_forwards']
     assert meta['new_llm_api_calls']==meta['jev_proprietary_calls']==meta['cera_training_steps']==meta['worker_generation_calls']==0
     return df,meta,manifest
 
@@ -48,8 +51,8 @@ def summarize(df):
     for keys,g in df.groupby(['selector_model','algorithm','dataset']):
         m,a,d=keys;ans=g[g.answered==1]
         rows.append(dict(model=m,algorithm=a,dataset=d,n=len(g),objective=g.objective.mean(),coverage=g.answered.mean(),
-            accuracy_on_answered=1-ans.loss.mean(),wrong_per_all=((g.answered==1)&(g.loss==1)).mean(),
-            queries=g.queries.mean(),controller_seconds_median=g.controller_seconds.median(),controller_seconds_p95=g.controller_seconds.quantile(.95),input_tokens_mean=g.input_tokens.mean()))
+            accuracy_on_answered=1-ans.loss.mean(),wrong_per_all=((g.answered==1)&(g.loss==1)).mean(),queries=g.queries.mean(),
+            controller_seconds_median=g.controller_seconds.median(),controller_seconds_p95=g.controller_seconds.quantile(.95),input_tokens_mean=g.input_tokens.mean()))
     result=pd.DataFrame(rows)
     macro=result.groupby(['model','algorithm'],sort=True).agg(n=('n','sum'),objective=('objective','mean'),coverage=('coverage','mean'),queries=('queries','mean'),wrong_per_all=('wrong_per_all','mean'),input_tokens_mean=('input_tokens_mean','mean')).reset_index()
     for i,r in macro.iterrows():
@@ -74,7 +77,7 @@ def calibration(path,model):
     f=pd.read_csv(path/'confidence.csv');rows=[]
     for score in ('raw_option_score','calibrated_success'):
         p=f[score].to_numpy();y=f.correct.to_numpy();bins=np.minimum((p*10).astype(int),9);ece=sum(np.mean(bins==i)*abs(p[bins==i].mean()-y[bins==i].mean()) for i in range(10) if np.any(bins==i))
-        rows.append(dict(model=model,score=score,n=len(f),brier=np.mean((p-y)**2),ece=ece,caveat='Raw action-option mass is only a confidence proxy, not a correctness distribution; calibrated variant uses 64 distinct development cases.'))
+        rows.append(dict(model=model,score=score,n=len(f),brier=np.mean((p-y)**2),ece=ece,caveat='Raw action-option mass is a confidence proxy, not a correctness distribution; calibrated variant uses 64 distinct development cases.'))
     return rows
 
 def run(inputs,out):
@@ -91,7 +94,7 @@ def run(inputs,out):
     for overhead in (0.,.001,.005,.01,.02,.05,.1):
         for r in macro.itertuples():sensitivity.append(dict(model=r.model,algorithm=r.algorithm,assumed_selector_loss_charge=overhead,objective=r.objective+(overhead if r.algorithm.startswith('openjev_') else 0)))
     pd.DataFrame(sensitivity).to_csv(out/'selector_cost_sensitivity.csv',index=False)
-    t.write_json(out/'verification.json',{'version':'1.4.0','tested_commit':os.getenv('GITHUB_SHA'),'all_gates_passed':True,'model_runs':metas,'matching_model_test_groups':128,'n_algorithms':12,'paired_ledger_rows':len(df),'total_local_selector_forwards':sum(m['new_primary_local_forwards']+m['new_robustness_local_forwards']+m['warmup_forwards'] for m in metas),'rerun_scope':'8 repeat forwards per model; deterministic symbolic replay; not two independent full selector inference runs','run_url':os.getenv('RESEARCH_RUN_URL'),'claim_scope':'Paired pilot conditional on fixed archive, calibration, CPU implementation and selected groups. No universal or proprietary Jev superiority claim.'})
+    t.write_json(out/'verification.json',{'version':'1.4.0','tested_commit':os.getenv('GITHUB_SHA'),'all_gates_passed':True,'model_runs':metas,'matching_model_test_groups':128,'n_algorithms':12,'paired_ledger_rows':len(df),'total_local_selector_forwards':sum(m['new_primary_local_forwards']+m['new_robustness_local_forwards']+m['warmup_forwards'] for m in metas),'rerun_scope':'8 repeat forwards per model on the original worker; deterministic symbolic replay; not two independent full selector inference runs','run_url':os.getenv('RESEARCH_RUN_URL'),'claim_scope':'Paired pilot conditional on fixed archive, calibration, explicit CPU-accumulation variant and selected groups. No universal or proprietary Jev superiority claim.'})
     print(macro.to_string(index=False));print(comp[comp.dataset=='macro_binary'].to_string(index=False))
 
 if __name__=='__main__':

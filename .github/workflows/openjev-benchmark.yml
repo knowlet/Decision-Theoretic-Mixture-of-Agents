@@ -2,7 +2,7 @@ name: OpenJev versus decision-theoretic controls
 on:
   push:
     branches: [develop]
-    paths: ['.github/workflows/openjev-benchmark.yml', 'openjev_benchmark.py', 'openjev_protocol.json', 'analyze_openjev.py', 'test_openjev_benchmark.py', 'requirements-openjev.txt']
+    paths: ['.github/workflows/openjev-benchmark.yml', 'openjev_benchmark.py', 'openjev_sharded.py', 'openjev_protocol.json', 'analyze_openjev.py', 'test_openjev_benchmark.py', 'requirements-openjev.txt']
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,16 +10,42 @@ defaults:
   run:
     shell: bash
 concurrency:
-  group: openjev-benchmark-${{ github.ref }}
+  group: openjev-benchmark-sharded-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  stop_obsolete_native_attempt:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Stop only the known superseded native-CPU pilot, preserving its logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          run=35309088991
+          sha=$(gh api "repos/$GH_REPO/actions/runs/$run" --jq .head_sha)
+          status=$(gh api "repos/$GH_REPO/actions/runs/$run" --jq .status)
+          test "$sha" = '45f361937e92eab64fa42e2baf7390600ef391a4'
+          if test "$status" != completed; then gh api --method POST "repos/$GH_REPO/actions/runs/$run/cancel"; fi
   inference:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
-        model: [qwen35-4b, qwen35-0.8b]
+        include:
+          - {model: qwen35-4b, shard: 0}
+          - {model: qwen35-4b, shard: 1}
+          - {model: qwen35-4b, shard: 2}
+          - {model: qwen35-4b, shard: 3}
+          - {model: qwen35-4b, shard: 4}
+          - {model: qwen35-4b, shard: 5}
+          - {model: qwen35-4b, shard: 6}
+          - {model: qwen35-4b, shard: 7}
+          - {model: qwen35-0.8b, shard: 0}
+          - {model: qwen35-0.8b, shard: 1}
     env:
       OMP_NUM_THREADS: '4'
       OPENBLAS_NUM_THREADS: '1'
@@ -43,18 +69,18 @@ jobs:
           curl --fail --location --retry 3 'https://codeload.github.com/TheoLeeCJ/openjev/tar.gz/b4782a6c953f05c6255706d7a219f4e032af5b58' | tar -xz -C vendor/openjev --strip-components=1
           python -m pip freeze > verification/environment.txt
           lscpu > verification/cpu.txt
-      - name: Original upstream scorer tests and our boundary tests
+      - name: Upstream scorer tests and our boundary tests
         run: |
           python -m pytest -q vendor/openjev/tests --junitxml=verification/upstream-tests.xml 2>&1 | tee verification/upstream-tests.log
           python -m pytest -q test_openjev_benchmark.py --junitxml=verification/benchmark-tests.xml 2>&1 | tee verification/benchmark-tests.log
-      - name: Actual pinned model inference on paired cases and robustness probes
-        run: python openjev_benchmark.py --model '${{ matrix.model }}' --download --out 'results/${{ matrix.model }}' 2>&1 | tee verification/inference.log
+      - name: Actual pinned model inference on assigned paired cases and probes
+        run: python openjev_sharded.py shard --model '${{ matrix.model }}' --index '${{ matrix.shard }}' --download --out results/shard 2>&1 | tee verification/inference.log
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: openjev-${{ matrix.model }}-${{ github.run_id }}
+          name: openjev-shard-${{ matrix.model }}-${{ matrix.shard }}-${{ github.run_id }}
           path: |
-            results/${{ matrix.model }}/
+            results/shard/
             verification/
           retention-days: 90
   analyze:
@@ -75,17 +101,19 @@ jobs:
           python-version: '3.13'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: openjev-*-${{ github.run_id }}
+          pattern: openjev-shard-*-${{ github.run_id }}
           path: incoming
-      - name: Install analysis environment and collect exact model ledgers
+      - name: Install analysis environment
         run: |
           python -m pip install -r requirements-transfer.txt
           mkdir -p inputs verification
-          for model in qwen35-4b qwen35-0.8b; do
-            cp -r "incoming/openjev-$model-${{ github.run_id }}/results/$model" "inputs/$model"
-          done
           python -m pip freeze > verification/environment.txt
-      - name: All regression tests and two full ProEval refresh reproductions
+      - name: Merge all shards and fit the same global development calibrators
+        run: |
+          for model in qwen35-4b qwen35-0.8b; do
+            python openjev_sharded.py finalize --model "$model" --download --out "inputs/$model"
+          done
+      - name: All regression tests and two full ProEval reproductions
         run: |
           python -m pytest -q --junitxml=verification/transfer-tests.xml 2>&1 | tee verification/all-tests.log
           python transfer_study.py --download --out results/transfer
@@ -98,7 +126,9 @@ jobs:
           python analyze_openjev.py --inputs inputs --out results/openjev 2>&1 | tee verification/headtohead.log
           python - <<'PY'
           import pathlib,xml.etree.ElementTree as ET
-          for p in pathlib.Path('incoming').rglob('*tests.xml'):
+          paths=list(pathlib.Path('incoming').rglob('*tests.xml'))
+          assert len(paths)==20
+          for p in paths:
               cases=list(ET.parse(p).getroot().iter('testcase'))
               assert cases and not any(c.find(k) is not None for c in cases for k in ('failure','error','skipped')),str(p)
           PY
@@ -106,13 +136,12 @@ jobs:
         run: |
           git archive --format=tar.gz --output=verification/source.tar.gz HEAD
           python - <<'PY'
-          import hashlib,json,pathlib,zipfile
-          root=pathlib.Path('.');dist=root/'dist-openjev';dist.mkdir(exist_ok=True)
+          import hashlib,pathlib,zipfile,shutil
+          dist=pathlib.Path('dist-openjev');dist.mkdir(exist_ok=True)
           with zipfile.ZipFile(dist/'evidence.zip','w',zipfile.ZIP_DEFLATED) as z:
               for folder in ('results','inputs','verification','incoming'):
                   for p in sorted(pathlib.Path(folder).rglob('*')):
                       if p.is_file():z.write(p,str(p))
-          import shutil
           for name in ('summary.csv','comparisons.csv','calibration.csv','robustness.csv','verification.json'):
               shutil.copy('results/openjev/'+name,dist/name)
           (dist/'SHA256SUMS').write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in sorted(dist.iterdir()) if p.is_file()))
