@@ -6,7 +6,7 @@ Public, non-peer-reviewed technical report with complete English and Traditional
 - Widens the executed OpenJev selector pilot from 128 to 192 held-out groups with 96 development cases; 711 local forward passes across fifteen shards.
 - The four earlier datasets keep their split salt and reproduce the v1.3 per-task table, apart from machine-precision summation in one Brier score.
 - Selector request text is now canonical: estimates are rounded to eight decimal places, removing the cross-host request-hash failure that v1.4 patched with a ULP recovery search.
-- Reports the deferral-dominated task instead of dropping it, and separates action-ID flips from answer or deferral changes in the order probe (42/48 action flips is only 9/48 semantic changes for 4B).
+- Reports the deferral-dominated task instead of dropping it, and separates action-ID flips from answer or deferral changes in the order probe (42/48 action flips is only 10/48 semantic changes for 4B).
 - 296 regression tests, fifteen shards with 11 upstream and 21 interface tests each, two separate-process replays and every ledger gate.
 
 No proprietary Jev endpoint, CERA-MoA training, live worker generation or human preference experiment was run. The measured disadvantage of the calibrated selector is specific to this archive, this declared loss and this panel, and is not a claim about reasoning quality.
