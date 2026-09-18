@@ -1,0 +1,31 @@
+{
+  "version": "1.6.0",
+  "status": "Project prospective checkpoint after v1.5, source/schema inspection and six owned CPU smoke forwards, but before new dataset inference. Not external preregistration.",
+  "datasets": ["boolq", "ocnli", "clinc", "tmmluplus"],
+  "sizes_per_dataset": {"fit": 32, "development": 16, "test": 32},
+  "model_order": ["nanojev", "decider", "system_one"],
+  "models": {
+    "nanojev": ["C-Tianyu/NanoJev", "4a19595eada0857133c0d2be024f879a4077054b"],
+    "decider": ["Mapika/decider-2b", "1d96be0093133e194fe18105a521b3e69be931d2"],
+    "system_one": ["pngwn/system-one-qwen3.5-4b-scorer", "e6464dce15f013c2ef641593a85cc6afcdaea928"]
+  },
+  "source_revisions": {
+    "boolq": "35b264d03638db9f4ce671b711558bf7ff0f80d5",
+    "ocnli": "b53efdee17257a5c33993cf6fcf8ffff0497ea0e",
+    "clinc": "828f8093932c8fe6ca7936c3d2e52903b1c523de",
+    "tmmluplus": "45e7c9b06d417c02a0998b2a6047383b04d608a9"
+  },
+  "split_contract": "Outcome-independent salted-hash unique groups. BoolQ passage/OCNLI premise grouping, training-derived fit/dev and labeled official validation/dev for evaluation (no blind-test claim); TMMLUplus dataset-card dev/val/test files with round-robin subjects. Exact test groups excluded from calibration. One canonical request artifact shared by all models; gold in a separate analysis artifact.",
+  "clinc": "Retrieval-assisted full 151-label prediction. TF-IDF char_wb 3:5, min_df 2, maximum similarity per intent, top eight of 150 intents plus OOS. Retriever uses original in-scope training excluding selected question groups. No gold inserted: shortlist misses count as errors. Pilot OOS fraction fixed at 25 percent, not the natural dataset fraction. Intent IDs/positions vary by query; the direction-aware controller's CLINC state represents candidate position, not a globally stable intent identity.",
+  "native_heads": "Use original architecture, saved trained heads and native prompt rendering. Root NanoJev navigation checkpoint, not its later game-specific variants. Decider's checkpoint-native temperature and System One publisher T=1.75; no temperature fitting to test. Task records are semantically identical; tokenization/native prompt forms necessarily differ.",
+  "cpu_runtime": "GitHub-hosted Ubuntu 24.04, four Torch threads, resident model inference, batch one request with candidate paths internally batched. NanoJev FP32; Qwen3.5 BF16 storage/output with disclosed FP32 Linear/Conv accumulation. No quantization, decoding, generated fallback or random-head fallback. Max 2048 native-path tokens, no truncation. Twelve shards; all three models sequentially on each same host, cyclically rotated order. Cache removed only from that job's dedicated model-cache directory.",
+  "primary_counts": {"semantic_cases": 320, "new_model_predictions": 960, "reversal_probes": 48, "repeat_probes": 24, "warmups": 36, "total_expected_forwards": 1068},
+  "algorithms": ["each native model raw", "fit-selected single", "majority three", "soft vote three", "agreement-only Bellman", "direction-only Bellman", "direction/confidence joint Bellman", "same-world myopic", "conditional independence ablation", "development-gated update"],
+  "optimization": "Preserve candidate direction and fixed confidence bins instead of only answer-equality patterns. Fit a positive joint observation distribution with a directional-confusion factorized prior. Compile finite Bellman actions into version-bound arrays. Compare compiled decisions exactly with online expected-Q reconstruction; report compile/fit time and memory separately. This is finite-model optimization, not a novel universally optimal theorem.",
+  "control_parameters": {"maximum_queries": 3, "assumed_cost_per_model": 0.01, "primary_defer_loss": 0.25, "forced_answer_diagnostic_defer_loss": 1.0, "confidence_threshold": 0.75, "prior_strength_grid": [8.0,32.0,128.0], "factorized_prior_pseudocount": 4.0},
+  "selection": "Fit likelihoods only on 32 fit cases per dataset; choose prior strength and gate only on 16 development cases. Model identities never change. Same-world myopic and independence ablations select their own strength where applicable. Development gate retains fit-selected single unless the candidate controller improves development objective by at least 0.01; this is a heuristic, not an out-of-sample safety guarantee.",
+  "metrics": "Native full-coverage accuracy, Wilson intervals, per-dataset/host p50 p95 milliseconds, maximum/summed input tokens, proper multiclass Brier and clipped NLL, top-label ECE, selective coverage/accuracy/loss. CLINC retrieval recall and OOS recall/FPR separately. Cascade latency is reconstructed by summing actually measured same-host component times, not newly measured integrated online serving latency. Offline training/compile costs disclosed separately.",
+  "primary_contrasts": ["joint Bellman vs agreement-only at defer 0.25", "joint Bellman vs fit-selected single at defer 0.25", "development-gated vs fit-selected single at defer 0.25", "joint Bellman vs agreement-only at defer 1.0"],
+  "inference": "2000 paired group bootstraps within dataset with equal macro weights. 95 percent intervals and conservative 98.75 percent four-comparison intervals, conditional on one fitted/calibrated cohort. Not equivalence tests, no synthetic fake model rows.",
+  "limits": ["128 test groups is a pilot, not full official benchmark scoring", "Decider training includes BoolQ/CLINC families, not unseen-task evidence", "NanoJev root navigation specialization is substantially out of domain", "OCNLI and System One materials have noncommercial restrictions", "Chinese is outside Decider's declared English language", "No proprietary TypeSafe Jev call", "No original-model training or inter-agent debate", "No human preference ground truth", "CPU results are not GPU/service claims", "An optimized fitted decision rule can still lose on test data"]
+}
