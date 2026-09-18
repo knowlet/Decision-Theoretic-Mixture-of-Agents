@@ -1,17 +1,18 @@
 cff-version: 1.2.0
-message: "Cite the versioned technical report and its verification artifact. This is not peer reviewed."
-title: "When to Ask Another Model: A Finite Decision-Theoretic Falsification Study of Mixture-of-Agents"
+message: "Cite the exact versioned report and its separate inference/analysis provenance. Public technical report, not peer reviewed."
+title: "When to Update the Router—and When to Use a Learned Selector"
 type: software
 authors:
   - name: "Decision-Theoretic Mixture-of-Agents Project"
-version: 1.1.0
-date-released: 2026-09-17
+version: 1.4.0
+date-released: 2026-09-18
 repository-code: "https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents"
-url: "https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/releases/tag/v1.1.0"
-abstract: "AI-assisted, reproducible finite-support synthetic decision study. No real LLM endpoint calls or universal architectural-optimality claim."
+url: "https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/releases/tag/v1.4.0"
+abstract: "AI-assisted decision-theoretic study with finite simulation, historical LLM response replay, ProEval population replacement, and actual OpenJev CPU selector inference on a 128-question pilot. Calibration, cost, order and numerical limitations are reported; no proprietary Jev inference, CERA agent training or universal architectural optimality is claimed."
 keywords:
   - mixture-of-agents
   - metareasoning
   - value-of-information
-  - optimal-stopping
+  - model-routing
+  - calibration
   - reproducibility
