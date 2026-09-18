@@ -1,0 +1,141 @@
+name: Publish verified OpenJev comparison paper
+on:
+  push:
+    branches: [develop]
+    paths: ['.github/workflows/publish-openjev-paper.yml', 'report_openjev.py', 'openjev_chapter.*.md', 'build_openjev_pdf.sh']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+defaults:
+  run:
+    shell: bash
+concurrency:
+  group: openjev-paper-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  SOURCE_RUN: '35310006824'
+  SOURCE_COMMIT: ee971cc25e1475ac16375886c135fe155a0dc803
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      PYTHONHASHSEED: '0'
+      REPORTING_COMMIT: ${{ github.sha }}
+      REPORTING_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Require successful exact-source inference before any report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          test "$(gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" --jq .head_sha)" = "$SOURCE_COMMIT"
+          gh run watch "$SOURCE_RUN" --exit-status --interval 30
+          test "$(gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" --jq .conclusion)" = success
+          gh run download "$SOURCE_RUN" --name "openjev-comparison-$SOURCE_RUN" --dir downloaded
+          (cd downloaded/dist-openjev && sha256sum -c SHA256SUMS)
+      - name: Restore executed source and add only separately tracked reporting files
+        run: |
+          python - <<'PY'
+          import os,pathlib,shutil,tarfile,zipfile,json
+          out=pathlib.Path('experiment');out.mkdir()
+          with zipfile.ZipFile('downloaded/dist-openjev/evidence.zip') as z:
+              for name in z.namelist():
+                  p=pathlib.PurePosixPath(name)
+                  assert not p.is_absolute() and '..' not in p.parts
+              z.extractall(out)
+          with tarfile.open(out/'verification/source.tar.gz') as archive:
+              archive.extractall(out,filter='data')
+          v=json.loads((out/'results/openjev/verification.json').read_text())
+          assert v['all_gates_passed'] and v['tested_commit']==os.environ['SOURCE_COMMIT']
+          for name in ('report_openjev.py','build_openjev_pdf.sh','openjev_chapter.en.md','openjev_chapter.zh-TW.md'):
+              shutil.copy(name,out/name)
+          # Typesetting-only Traditional Chinese normalization; no scoring input changes.
+          p=out/'openjev_chapter.zh-TW.md'
+          p.write_text(p.read_text().replace('当前','當前').replace('预訓練','預訓練').replace('反转','反轉').replace('跑过','跑過'))
+          PY
+          git archive --format=tar.gz --output=reporting-source.tar.gz HEAD
+          python -m pip install -r experiment/requirements-transfer.txt
+      - name: Independently recompute paired tables from archived inference records
+        working-directory: experiment
+        run: |
+          python analyze_openjev.py --inputs inputs --out results/openjev-rechecked
+          python - <<'PY'
+          import os,json,pathlib,pandas as pd
+          for name in ('summary.csv','comparisons.csv','calibration.csv','robustness.csv','by_dataset.csv','paired_cases.csv','selector_cost_sensitivity.csv'):
+              pd.testing.assert_frame_equal(pd.read_csv('results/openjev/'+name),pd.read_csv('results/openjev-rechecked/'+name),check_dtype=False,rtol=1e-10,atol=1e-12)
+          p=pathlib.Path('results/openjev-rechecked/verification.json');v=json.loads(p.read_text());v['operation']='analysis-only regeneration, not fresh inference';v['source_experiment_commit']=os.environ['SOURCE_COMMIT'];p.write_text(json.dumps(v,indent=2)+'\n')
+          PY
+      - name: Install complete manuscript toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pandoc lmodern texlive-xetex texlive-lang-chinese texlive-latex-extra texlive-fonts-recommended fonts-noto-cjk fonts-liberation fonts-dejavu-core
+      - name: Build complete English and Traditional Chinese manuscripts
+        working-directory: experiment
+        run: bash build_openjev_pdf.sh
+      - name: Package experiment provenance and reporting provenance separately
+        run: |
+          python - <<'PY'
+          import pathlib,zipfile,shutil,hashlib,json,os
+          d=pathlib.Path('experiment/dist-paper')
+          v=json.loads((d/'verification.json').read_text());assert v['experiment_commit']==os.environ['SOURCE_COMMIT'] and v['reporting_commit']==os.environ['GITHUB_SHA']
+          with zipfile.ZipFile(d/'reproducibility.zip','w',zipfile.ZIP_DEFLATED) as z:
+              z.write('downloaded/dist-openjev/evidence.zip','experiment-evidence.zip')
+              z.write('reporting-source.tar.gz','reporting-source.tar.gz')
+              for p in pathlib.Path('experiment/verification').glob('openjev-latex-*.log'):z.write(p,'rendering/'+p.name)
+              for p in d.iterdir():
+                  if p.is_file() and p.suffix in ('.pdf','.md','.json','.csv','.tex'):z.write(p,p.name)
+          for pattern in ('*.aux','*.log','*.out'):
+              for p in d.glob(pattern):p.unlink()
+          (d/'SHA256SUMS').write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in sorted(d.iterdir()) if p.is_file() and p.name!='SHA256SUMS'))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: openjev-paper-${{ github.run_id }}
+          path: |
+            experiment/dist-paper/
+            experiment/verification/
+          if-no-files-found: error
+          retention-days: 90
+  publish:
+    needs: report
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: openjev-paper-${{ github.run_id }}
+          path: evidence
+      - name: Publish only verified, previously unused research version
+        working-directory: evidence/dist-paper
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          sha256sum -c SHA256SUMS
+          python - <<'PY'
+          import json,os
+          v=json.load(open('verification.json'))
+          assert v['experiment_evidence']['all_gates_passed']
+          assert v['experiment_commit']==os.environ['SOURCE_COMMIT']
+          assert v['reporting_commit']==os.environ['GITHUB_SHA']
+          assert all(s['failures']==s['skipped']==0 for s in v['test_suites'])
+          PY
+          if gh release view v1.4.0 >/dev/null 2>&1; then
+            echo 'Version exists; its artifacts and tag were not overwritten.'
+          else
+            gh release create v1.4.0 --target "$GITHUB_SHA" --title 'v1.4.0 — executed OpenJev head-to-head and population transfer' --notes 'Actual local OpenJev 4B/0.8B selector forwards on a locked 128-question pilot; matched worker-panel controls, development calibration, order probes, complete five-file ProEval reruns, and full bilingual manuscripts. Explicit CPU-accumulation variant, not proprietary Jev or CERA training. Experiment and reporting commits are separately recorded. Public technical report, not peer review or SOTA certification.' ./*
+          fi
