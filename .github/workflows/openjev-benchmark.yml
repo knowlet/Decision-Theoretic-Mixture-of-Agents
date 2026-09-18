@@ -185,7 +185,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           test "$(gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" --jq .head_sha)" = "$SOURCE_COMMIT"
-          test "$(gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" --jq .conclusion)" = success
+          # This job lives inside the run that produced the artifact, so the parent run
+          # cannot report success while the job is still executing. Gate on the analyze
+          # job that produced the comparison artifact instead.
+          analyze=$(gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name == "analyze")][0].conclusion')
+          test "$analyze" = success
           gh run download "$SOURCE_RUN" --name "openjev-comparison-$SOURCE_RUN" --dir downloaded
           (cd downloaded/dist-openjev && sha256sum -c SHA256SUMS)
       - name: Restore executed source and add only separately tracked reporting files
