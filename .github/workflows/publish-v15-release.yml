@@ -1,0 +1,58 @@
+name: Publish the verified v1.5 report
+
+# The v1.5 pilot run this publishes was executed end to end: fifteen inference shards, the six-
+# dataset analysis, the independent re-derivation of every paired table and both manuscripts.
+# Its reporting job then failed only while looking up an environment variable, so the verified
+# artifact was never published. This dispatch-only workflow publishes exactly that artifact
+# after re-checking its checksums and every gate. It does not re-run inference or rebuild the
+# manuscripts, and it refuses to overwrite an existing release.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+env:
+  SOURCE_RUN: '35329947656'
+  SOURCE_COMMIT: '599bf42ee7f73f30a877b45a986dc66ab1194b95'
+concurrency:
+  group: publish-v15-report
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Require the pinned successful run and download its verified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          test "$(gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" --jq .head_sha)" = "$SOURCE_COMMIT"
+          job=$(gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name == "paper")][0].conclusion')
+          test "$job" = success
+          gh run download "$SOURCE_RUN" --name "openjev-paper-$SOURCE_RUN" --dir evidence
+      - name: Publish a new version only after all evidence checks
+        working-directory: evidence/dist-paper
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          sha256sum -c SHA256SUMS
+          python - <<'PY'
+          import json,os
+          v=json.load(open('verification.json'))
+          e=v['experiment_evidence']
+          assert e['all_gates_passed'] and e['n_datasets']==6 and e['n_test']==192 and e['n_development']==96
+          assert all(m['new_llm_api_calls']==m['jev_proprietary_calls']==m['cera_training_steps']==m['worker_generation_calls']==0 for m in e['model_runs'])
+          assert e['total_local_selector_forwards']==sum(m['new_primary_local_forwards']+m['new_robustness_local_forwards']+m['warmup_forwards'] for m in e['model_runs'])
+          assert v['experiment_commit']==v['reporting_commit']==os.environ['SOURCE_COMMIT']
+          assert all(s['failures']==s['skipped']==0 for s in v['test_suites'])
+          PY
+          if gh release view v1.5.0 >/dev/null 2>&1; then
+            echo 'Version exists; its artifacts and tag were not overwritten.'
+          else
+            gh release create v1.5.0 --target "$SOURCE_COMMIT" --title 'v1.5.0 — six-task replay and widened OpenJev head-to-head' --notes 'Adds gqa and jigsaw from the same pinned ProEval revision, taking the primary task pool to six binary datasets and 1,732 held-out questions, and widens the executed OpenJev selector pilot from 128 to 192 held-out groups with 96 development cases. The four earlier datasets keep their published split salt, so every previously scored case is still selected; one added task is deferral-dominated under the declared loss and is reported as such rather than excluded. Two independent hosted executions of the identical pipeline are compared in the manuscript, which discloses that the symbolic controls reproduce exactly while a small number of selector decisions do not, and that the paired intervals condition on one recorded execution. Selector requests are a canonical fixture, so recorded request hashes reproduce across hosts. Local OpenJev inference only: no proprietary Jev, no CERA training, no live worker generation. Public technical report, not peer review.' ./*
+          fi
