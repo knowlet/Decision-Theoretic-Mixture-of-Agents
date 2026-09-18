@@ -122,7 +122,7 @@ For three declared contrasts, we bootstrap exact question groups within each bin
 
 @@MACRO@@
 
-After refitting, Bellman, static and myopic obtain the same objective on every paired binary test case, with macro $J=@@REFIT_OBJECTIVE@@$. This is stronger than merely failing to reject a difference in this realized sample, but it does not establish population equivalence. Their batch schedules can differ even when selected candidates and acquisition counts match. Per-task acquisition counts are in the table below. Because the split salt and the archived answers of the four previously published tasks are unchanged, their per-task results reproduce the earlier version exactly. The added GQA task acquires nothing at all, since withholding is optimal there under the declared loss.
+After refitting, Bellman, static and myopic obtain the same objective on every paired binary test case, with macro $J=@@REFIT_OBJECTIVE@@$. This is stronger than merely failing to reject a difference in this realized sample, but it does not establish population equivalence. Their batch schedules can differ even when selected candidates and acquisition counts match. Per-task acquisition counts are in the table below. Because the split salt and the archived answers of the four previously published tasks are unchanged, their per-task results reproduce the earlier version exactly. On the added GQA task every control withholds the terminal decision, and the single-model control still pays for one acquisition that its terminal rule then ignores.
 
 @@TASKS@@
 

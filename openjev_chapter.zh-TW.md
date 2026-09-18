@@ -58,7 +58,7 @@ Raw score 是候選動作的選項質量，與候選正確性比較只能視為�
 
 ## 證據界線與發布追蹤
 
-實驗來源 commit 為 `@@EXPERIMENT_COMMIT@@`，執行紀錄為 @@EXPERIMENT_RUN@@。後續報告 commit 另記，不偽裝成重新跑过的推論來源。
+實驗來源 commit 為 `@@EXPERIMENT_COMMIT@@`，執行紀錄為 @@EXPERIMENT_RUN@@。報告與推論在 provenance 中分別記錄，報告 commit 不會被當成這些推論呼叫的來源。
 
 這次是實際對抗評測，不只有 API contract；但受限於 192 題、六種既有基準、單一歸檔、單一神經模型家族、假設成本及無新工作模型生成。它不建立 SOTA、專有 Jev 品質、CERA 訓練效果或個人偏好辨識。更強研究需跨模型家族及獨立收集資料，以因子設計分離表示法、終端選擇與查詢策略，並固定授權與資源合約。
 

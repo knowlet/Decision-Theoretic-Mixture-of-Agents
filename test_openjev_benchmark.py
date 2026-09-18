@@ -57,3 +57,15 @@ def test_source_revision_immutable():
     import re
     assert re.fullmatch('[0-9a-f]{40}',b.UPSTREAM)
     assert all(re.fullmatch('[0-9a-f]{40}',rev) for _,rev in b.MODELS.values())
+
+def test_widened_pilot_counts_are_derived_and_pinned():
+    # Derived gates scale with the locked protocol; the literal expectation here is
+    # deliberate, so widening the pilot again requires editing this test instead of
+    # silently passing stale numbers.
+    import analyze_openjev as a
+    nds=len(b.DATASETS)
+    assert nds==6 and nds==len(b.DATASETS)
+    assert a.TEST_TOTAL==b.TEST_N*nds==192 and a.DEV_TOTAL==b.DEV_N*nds==96
+    assert a.CASE_TOTAL==288 and a.ROBUST_TOTAL==(b.ORDER_N+b.REPEAT_N)*nds==60
+    from openjev_sharded import SHARDS
+    assert SHARDS=={'qwen35-4b':12,'qwen35-0.8b':3}

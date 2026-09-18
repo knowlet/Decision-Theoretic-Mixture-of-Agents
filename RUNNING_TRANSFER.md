@@ -1,6 +1,6 @@
 # Run v1.3 population-transfer experiments
 
-In GitHub open **Actions → Population transfer and typed decisions → Run workflow**. No model API key or GPU is needed. The workflow downloads the five immutable ProEval CSVs with SHA-256 checks, executes all tests, refits and evaluates twice in separate Python processes, verifies the result ledgers and builds the full English and Traditional Chinese papers. Manual runs produce artifacts. Successful source-triggered runs may publish a previously unused version; existing release assets are not overwritten.
+In GitHub open **Actions → Population transfer and typed decisions → Run workflow**. No model API key or GPU is needed. The workflow downloads the seven immutable ProEval CSVs with SHA-256 checks (six binary tasks plus the DICES ordinal diagnostic), executes all tests, refits and evaluates twice in separate Python processes, verifies the result ledgers and builds the full English and Traditional Chinese papers. Manual runs produce artifacts. Successful source-triggered runs may publish a previously unused version; existing release assets are not overwritten.
 
 Local reproduction (Python 3.13):
 

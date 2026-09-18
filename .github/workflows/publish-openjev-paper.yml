@@ -1,9 +1,10 @@
 name: Publish verified OpenJev comparison paper
 on:
-  push:
-    branches: [develop]
-    paths: ['.github/workflows/publish-openjev-paper.yml', 'report_openjev.py', 'openjev_chapter.*.md', 'build_openjev_pdf.sh']
   workflow_dispatch:
+# Retired from push triggers: this workflow rebuilds the already published v1.4.0
+# report from the pinned 2026-09-18 inference run, and the reporting code has since
+# moved to v1.5. It stays dispatch-only so that the v1.4 evidence can still be
+# re-verified against its own commit, but a normal push can no longer fire it.
 permissions:
   contents: read
   actions: read
@@ -109,7 +110,7 @@ jobs:
           retention-days: 90
   publish:
     needs: report
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: write

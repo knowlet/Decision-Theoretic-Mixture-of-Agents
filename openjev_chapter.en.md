@@ -58,7 +58,7 @@ This separates CERA-MoA's open-ended inference convention—returning the highes
 
 ## Scope and publication provenance
 
-Experiment source: `@@EXPERIMENT_COMMIT@@`. Hosted execution: @@EXPERIMENT_RUN@@. A later reporting commit is recorded separately, never relabeled as the source of those inference calls.
+Experiment source: `@@EXPERIMENT_COMMIT@@`. Hosted execution: @@EXPERIMENT_RUN@@. Reporting and inference are recorded separately in the provenance bundle, and a reporting commit is never presented as the source of those inference calls.
 
 This is an executed head-to-head pilot, not just an API contract. Its limits include 192 test cases, six familiar benchmarks, one archive, one neural family, declared task-independent costs and no new worker generation. It does not establish current SOTA, proprietary Jev quality, CERA training effects or individual human preferences. Stronger experiments should cross model families and independently collected datasets and factorially separate representation, terminal selection and acquisition strategy under common authorization and resource contracts.
 

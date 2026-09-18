@@ -1,9 +1,9 @@
 name: Verify OpenJev shards and publish audited paper
 on:
-  push:
-    branches: [develop]
-    paths: ['.github/workflows/recover-openjev-paper.yml', 'recover_openjev_analysis.py', 'test_openjev_recovery.py', 'OPENJEV_REQUEST_RECOVERY.md']
   workflow_dispatch:
+# Retired from push triggers alongside the other v1.4 publication workflow, for the
+# same reason: it pins a historical inference run and would otherwise re-fire on
+# unrelated pushes. Manual dispatch still re-verifies that pinned evidence.
 permissions:
   contents: read
   actions: read
@@ -136,7 +136,7 @@ jobs:
           retention-days: 90
   publish:
     needs: recover
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
