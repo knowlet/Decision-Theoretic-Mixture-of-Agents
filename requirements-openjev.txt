@@ -1,0 +1,11 @@
+-r requirements-transfer.txt
+# torch==2.10.0 is installed separately from the CPU wheel index.
+# Numerical packages use our pinned common environment. Upstream direct readout
+# source is unmodified; its original metadata and dependencies are archived.
+transformers==5.17.0
+accelerate==1.12.0
+safetensors==0.8.0
+huggingface-hub==1.31.0
+tokenizers==0.23.2
+sentencepiece==0.2.1
+protobuf==7.36.1
