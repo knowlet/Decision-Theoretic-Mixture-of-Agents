@@ -88,9 +88,39 @@ question this evidence points at, and it is cheap to test on the records already
 pilot already scored, eight subsets per size, and scores every fit on the same 32 held-out cases.
 Macro over the four tasks:
 
-## Scope
+## Does the model distribution add anything beyond agreement?
+
+`jevbench_competence.py` answers the cheapest form of the structural question on records the pilot
+already published, with no new inference. For every scored case the three native heads give a
+distribution over the same options, so the event worth predicting is "the panel plurality option is
+correct". Three estimators of that event are fitted on the 32 fit cases per task and scored on the
+32 held-out cases: the agreement pattern alone with smoothing, the confidence features alone, and
+both together. Macro over the four tasks:
+
+| Estimator | Brier | NLL | ECE | Threshold accuracy | AUC |
+|---|---:|---:|---:|---:|---:|
+| Agreement pattern only | 0.3104 | **0.4756** | **0.0983** | 0.7578 | 0.6927 |
+| Agreement plus confidence | 0.3018 | 0.4977 | 0.1396 | **0.8203** | **0.7961** |
+| Confidence only | **0.2982** | 0.4995 | 0.1177 | 0.8125 | 0.7748 |
+
+The reading is mixed in a specific way rather than undecided. The confidence signal does carry
+discrimination that agreement does not: ranking cases by it lifts AUC from 0.69 to about 0.80 and
+lifts the accuracy of a simple threshold rule by six points. But it does not yet arrive as a usable
+probability: log loss and ECE are worse than the agreement-only estimator, so the same signal that
+ranks better is also more confident than it deserves. Paired Brier differences against the
+agreement-only estimator are in its favour by 0.009 to 0.012 and do not resolve either way at 32
+test cases per task.
+
+That supports the repositioning this route statement proposed, with an amendment: a Jev-like model
+is worth using as a competence signal for the decision layer, and the immediate work is to calibrate
+that signal rather than to add decision-theoretic structure. The estimator that needs fixing is the
+one that turns option distributions into a probability of being right, which is a calibration
+problem on the model side and testable on the records here with a held-out fit.
+
 
 These are read-only calculations over the same verified artifacts as `verify_jevbench.py`: no new
 inference, no model training, no proprietary Jev call. The joint variants reuse the analysis compiler
 deliberately, and a test asserts that no second compiler exists in the experiment module, so the
 comparison isolates estimation.
+
+## Scope
