@@ -83,6 +83,7 @@ jobs:
           python jevbench_fitgap.py --incoming incoming --fixture fixture --evaluation evaluation --out results/jev16-fitgap 2>&1 | tee verification/fitgap.log
           python jevbench_learning_curve.py --incoming incoming --fixture fixture --evaluation evaluation --out results/jev16-learning-curve 2>&1 | tee verification/learning-curve.log
           python jevbench_competence.py --incoming incoming --fixture fixture --evaluation evaluation --out results/jev16-competence 2>&1 | tee verification/competence.log
+          python jevbench_predictor.py --incoming incoming --fixture fixture --evaluation evaluation --out results/jev16-predictor 2>&1 | tee verification/predictor.log
       - name: Fail unless the two readers agree and the analysis gates hold
         run: |
           python - <<'PY'

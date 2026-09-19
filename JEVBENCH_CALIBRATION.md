@@ -140,4 +140,37 @@ inference, no model training, no proprietary Jev call. The joint variants reuse 
 deliberately, and a test asserts that no second compiler exists in the experiment module, so the
 comparison isolates estimation.
 
+## Turning the competence signal into a decision rule
+
+`jevbench_predictor.py` tests the repair the reviewed plan puts first, and then judges the repair
+where it matters, at the decision rather than at the score. Four predictors of "the panel plurality
+option is correct" are fitted on the 32 fit cases per task and applied to the 32 held-out cases. The
+decision rule is the one the declared loss implies: answering wrongly costs 1 and withholding costs
+0.25, so the panel answer is returned exactly when its calibrated probability clears 0.75, otherwise
+the decision defers. Macro over the four tasks:
+
+| Predictor | Brier | NLL | ECE | AUC | Answered | Accuracy among answered | Decision loss |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Smoothed agreement rate | 0.3104 | **0.4756** | **0.0983** | 0.6927 | 64.84% | 82.98% | 0.1895 |
+| Logistic on confidence | **0.2982** | 0.4995 | 0.1177 | **0.7748** | 69.53% | 82.94% | 0.1855 |
+| Platt-calibrated | 0.3042 | 0.4909 | 0.1052 | 0.7350 | 69.53% | 84.22% | 0.1777 |
+| Isotonic-calibrated | 0.3005 | 0.8945 | 0.1155 | 0.7066 | 57.81% | **90.02%** | **0.1602** |
+
+Calibration moves the decision in the intended direction. The isotonic variant answers 58% of cases
+instead of 65% and is right on 90% of the ones it answers, and that improves the decision loss from
+0.1895 to 0.1602, a point estimate about 15% lower. All three paired differences against the
+agreement baseline are in its favour and none of them resolves at 32 held-out cases per task, so the
+honest statement is that the pipeline points the right way and the sample cannot settle it.
+
+The table also carries a warning about which number to optimise. The isotonic variant has by far the
+worst log loss, 0.8945, because a calibrator fitted on sixteen cases produces probabilities near zero
+and one that log loss punishes severely, while the decision rule only cares which side of 0.75 they
+fall on. Selecting the predictor by a proper score would have discarded the variant that produces the
+best decisions. Judging it at the decision is the comparison that matches the objective.
+
+Where that leaves the plan: the machinery for a usable correctness probability exists and behaves,
+and what it needs next is evaluation cases rather than more calibration cases, because the intervals
+are limited by the 32 held-out cases and not by the 32 fit cases. That is a different constraint from
+the one the calibration-size curve measured.
+
 ## Scope
