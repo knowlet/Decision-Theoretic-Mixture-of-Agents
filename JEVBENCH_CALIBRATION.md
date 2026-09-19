@@ -39,6 +39,15 @@ out-of-sample setting for the joint model, still leaves it behind agreement-only
 is not that a 16-case development split picks the wrong strength; the direction and confidence
 observation model itself is not identifiable from 32 calibration cases.
 
+### Two different joint Bellman numbers
+
+Two joint Bellman numbers appear in this project and they are different configurations of the same
+estimator rather than two estimates of one quantity. The analysis headline selects the prior strength
+on the 16 development cases per task and lands at J=0.2183. The variant table above fixes strength at
+32 for every task, which lands at 0.2027, and the calibration-size section uses the same fixed value
+so that every row of the curve is comparable. Quoting one against the other would mix a tuned
+configuration with an untuned one.
+
 
 ## What the estimation fixes first implied (superseded below)
 
@@ -76,7 +85,10 @@ on the reading that the extra signals were under-calibrated. Within the range th
 opposite trend appears: calibration growth erodes the joint controller's advantage rather than
 recovering it. A linear projection would put it far behind at 256 cases, which is a hypothesis and
 not evidence, but the measured direction is enough to say that spending 3.4 times the inference on
-more of the same calibration data is not the next experiment worth running.
+more of the same calibration data should not be the next experiment. It is not evidence that the
+enlargement cannot help: the movement is smaller than the spread across subsets, and the largest
+calibration size the evidence supports is the one already in use, so the range is short. The claim
+this supports is narrow, and it is a priority claim rather than a demonstration of futility.
 
 What remains open is structural rather than about sample size: which observation of a Jev-like model
 carries decision-relevant information that agreement does not already contain. Treating the model as
@@ -111,11 +123,16 @@ ranks better is also more confident than it deserves. Paired Brier differences a
 agreement-only estimator are in its favour by 0.009 to 0.012 and do not resolve either way at 32
 test cases per task.
 
-That supports the repositioning this route statement proposed, with an amendment: a Jev-like model
-is worth using as a competence signal for the decision layer, and the immediate work is to calibrate
-that signal rather than to add decision-theoretic structure. The estimator that needs fixing is the
-one that turns option distributions into a probability of being right, which is a calibration
-problem on the model side and testable on the records here with a held-out fit.
+Two cautions belong with that reading. It is one pilot at 32 held-out cases per task, so the
+discrimination difference is a point estimate from ranking rather than a resolved comparison, and the
+proper-score differences run the other way. The pilot shows the signal is present and points at
+calibration as the obstacle; it does not establish that the extra information is usable.
+
+That is consistent with the repositioning this route statement proposed, with an amendment: a
+Jev-like model is worth using as a competence signal for the decision layer, and the immediate work
+is to calibrate that signal rather than to add decision-theoretic structure. The estimator that needs
+fixing is the one that turns option distributions into a probability of being right, which is a
+calibration problem on the model side and testable on the records here with a held-out fit.
 
 
 These are read-only calculations over the same verified artifacts as `verify_jevbench.py`: no new
