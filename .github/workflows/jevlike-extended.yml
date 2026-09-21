@@ -68,7 +68,6 @@ jobs:
     env:
       MODEL: ${{ matrix.model }}
       SHARD: ${{ matrix.shard }}
-      HF_HOME: ${{ runner.temp }}/jev17-model-cache
       RESEARCH_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -89,6 +88,8 @@ jobs:
           python -m pip freeze > verification/environment.txt
           lscpu > verification/cpu.txt
       - name: Run gold-blind native forwards
+        env:
+          HF_HOME: ${{ runner.temp }}/jev17-model-cache
         run: |
           test ! -f fixture/gold.jsonl
           python -m jevbench.extended_run --model "$MODEL" --shard "$SHARD" --fixture fixture --vendor vendor --out "results/$MODEL" 2>&1 | tee "verification/$MODEL.log"
