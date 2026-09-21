@@ -1,0 +1,42 @@
+{
+  "version": "1.8.0",
+  "status": "Expanded native decision cohort with at least 200 held-out cases per dataset; English and OOD-Chinese leaderboards are declared before inference.",
+  "datasets": ["boolq", "ocnli", "clinc", "tmmluplus"],
+  "sizes_per_dataset": {"fit": 128, "dev": 64, "test": 200},
+  "leaderboards": {
+    "english": ["boolq", "clinc"],
+    "ood_chinese": ["ocnli", "tmmluplus"]
+  },
+  "models": {
+    "decider_2b": {"repo": "Mapika/decider-2b", "revision": "b37f7e1ba3fbc9238004cf531fabbee2619973fd", "language": ["en"]},
+    "kev_08b": {"repo": "jaredpalmer/kev-0.8b", "revision": "c917edefdfd72b3e9ba71455584700acc70595f6", "language": ["en"]},
+    "laya_typed": {"repo": "convaiinnovations/laya-typed-decisions", "revision": "f9ab0b228f0fc0f14d873dbc99038f135c2da1b2", "language": ["en"]},
+    "laya_multilingual": {"repo": "convaiinnovations/laya-multilingual", "revision": "052592a15d198d9ad47da779604259b10b47b7aa", "language": ["multilingual", "zh", "en"]}
+  },
+  "source_revisions": {
+    "boolq": "35b264d03638db9f4ce671b711558bf7ff0f80d5",
+    "ocnli": "b53efdee17257a5c33993cf6fcf8ffff0497ea0e",
+    "clinc": "828f8093932c8fe6ca7936c3d2e52903b1c523de",
+    "tmmluplus": "45e7c9b06d417c02a0998b2a6047383b04d608a9"
+  },
+  "inference": {
+    "shards": 12,
+    "reverse_probes_per_dataset": 4,
+    "repeat_probes_per_dataset": 2,
+    "primary_cases_per_model": 1568,
+    "held_out_cases_per_model": 800,
+    "evidence_forwards_per_model": 1592,
+    "warmups_per_model": 12,
+    "total_forwards_per_model": 1604,
+    "gold_isolated": true,
+    "new_api_calls": 0,
+    "training_steps": 0
+  },
+  "limits": [
+    "OCNLI is labeled official dev rather than blind official test.",
+    "The English checkpoints are evaluated on OOD-Chinese tasks as transfer measurements.",
+    "The multilingual Laya checkpoint is a native typed decision head, but this does not make the comparison a controlled language-only experiment.",
+    "CPU latency is hosted-runner measurement and is not production GPU or proprietary Jev latency.",
+    "The leaderboard aggregates are descriptive and do not establish universal MoA superiority."
+  ]
+}

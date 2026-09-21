@@ -1,0 +1,139 @@
+name: Expanded Jev-like English and OOD-Chinese benchmark
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/jevlike-expanded.yml'
+      - 'expanded_protocol.json'
+      - 'jevbench/expanded_*.py'
+      - 'test_jevbench_expanded.py'
+      - 'requirements-jevlike.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  HF_HUB_DISABLE_XET: '1'
+  HF_HUB_DISABLE_TELEMETRY: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  OMP_NUM_THREADS: '4'
+  PYTHONHASHSEED: '0'
+
+jobs:
+  fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with: {python-version: '3.13'}
+      - name: Build the expanded fixture with gold isolated
+        run: |
+          python -m pip install -r requirements-transfer.txt
+          python -m jevbench.expanded_fixtures --cache .cache/jev18 --out fixture-expanded
+          mkdir -p public-fixture evaluation
+          cp fixture-expanded/requests.jsonl fixture-expanded/manifest.json public-fixture/
+          cp fixture-expanded/gold.jsonl evaluation/
+          cp fixture-expanded/manifest.json evaluation/manifest.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jev18-inputs-${{ github.run_id }}
+          path: public-fixture/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jev18-evaluation-${{ github.run_id }}
+          path: evaluation/
+          retention-days: 90
+          if-no-files-found: error
+
+  native:
+    needs: fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [decider_2b, kev_08b, laya_typed, laya_multilingual]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    env:
+      MODEL: ${{ matrix.model }}
+      SHARD: ${{ matrix.shard }}
+      RESEARCH_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with: {python-version: '3.13'}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: jev18-inputs-${{ github.run_id }}
+          path: fixture
+      - name: Install pinned CPU runtime and inspected source
+        run: |
+          python -m pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r requirements-jevlike.txt
+          mkdir -p vendor/kev vendor/laya verification
+          curl --fail --location --retry 3 'https://codeload.github.com/jaredpalmer/kev/tar.gz/e0bcf50153f1bda4ca6a8be5e12cbd5f9ebbce1c' | tar -xz -C vendor/kev --strip-components=1
+          curl --fail --location --retry 3 'https://codeload.github.com/NandhaKishorM/laya/tar.gz/42626c348753fbb17572a813127df2278a1ec527' | tar -xz -C vendor/laya --strip-components=1
+          python -m pip freeze > verification/environment.txt
+          lscpu > verification/cpu.txt
+      - name: Run gold-blind expanded native forwards
+        env:
+          HF_HOME: ${{ runner.temp }}/jev18-model-cache
+          USE_TF: '0'
+        run: |
+          test ! -f fixture/gold.jsonl
+          python -m jevbench.expanded_run --model "$MODEL" --shard "$SHARD" --fixture fixture --vendor vendor --out "results/$MODEL" 2>&1 | tee "verification/$MODEL.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: jev18-${{ matrix.model }}-${{ matrix.shard }}-${{ github.run_id }}
+          path: |
+            results/
+            verification/
+          retention-days: 90
+          if-no-files-found: error
+
+  analyze:
+    needs: native
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with: {python-version: '3.13'}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: jev18-inputs-${{ github.run_id }}
+          path: fixture
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: jev18-evaluation-${{ github.run_id }}
+          path: evaluation
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: jev18-*-*-${{ github.run_id }}
+          path: incoming
+          merge-multiple: false
+      - name: Install analysis environment and run expanded fail-closed reader
+        run: |
+          python -m pip install -r requirements-transfer.txt
+          python -m pytest -q test_jevbench_expanded.py
+          python -m jevbench.expanded_analyze --incoming incoming --fixture fixture --evaluation evaluation --out results/expanded
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: jev18-analysis-${{ github.run_id }}
+          path: results/expanded/
+          retention-days: 90
+          if-no-files-found: error

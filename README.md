@@ -1,5 +1,20 @@
 # Decision-Theoretic Mixture-of-Agents
 
+## v1.8.0 candidate — expanded Jev-like cohort
+
+The repository now contains a separate expanded benchmark with **128 fit, 64
+development, and 200 held-out cases per dataset** for BoolQ, OCNLI, CLINC, and
+TMMLU+. It declares two aggregates before inference: an **English leaderboard**
+(BoolQ and CLINC) and an **OOD-Chinese leaderboard** (OCNLI and TMMLU+). The
+cohort adds the pinned `convaiinnovations/laya-multilingual` checkpoint beside
+Decider-2B, Kev-0.8B, and Laya typed decisions.
+
+This is a candidate protocol and implementation. The latest verified evidence
+remains v1.7 until the expanded workflow completes successfully; no v1.8
+accuracy or latency numbers are claimed here yet.
+
+[v1.8 protocol](expanded_protocol.json) · [technical protocol](JEVLIKE_EXPANDED.md) · [changelog](V1.8_CHANGELOG.md) · [Actions workflow](.github/workflows/jevlike-expanded.yml)
+
 ## Latest verified candidate: v1.7.0 — native Jev-like checkpoints and RLCD smoke
 
 The latest verified candidate extends the Actions benchmark with the requested
