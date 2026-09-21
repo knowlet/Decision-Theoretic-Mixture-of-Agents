@@ -36,7 +36,7 @@ jobs:
         with: {python-version: '3.13'}
       - name: Build the expanded fixture with gold isolated
         run: |
-          python -m pip install -r requirements-transfer.txt
+          python -m pip install -r requirements-transfer.txt huggingface-hub==1.31.0 pyarrow==21.0.0
           python -m jevbench.expanded_fixtures --cache .cache/jev18 --out fixture-expanded
           mkdir -p public-fixture evaluation
           cp fixture-expanded/requests.jsonl fixture-expanded/manifest.json public-fixture/
