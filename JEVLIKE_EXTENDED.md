@@ -28,15 +28,15 @@ The immutable model registry is at jevbench/extended_registry.py.
 
 ## Verified run
 
-The evidence run is [Actions run 35577340525](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/actions/runs/35577340525), executed from commit
-`85f3bd11273024273732873ebf9da77187cb16b8`. Its fixture, native shards,
+The evidence run is [Actions run 35579322298](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/actions/runs/35579322298), executed from commit
+`9e46106eaa2d0002d8d0de14624e6c31741dd7c9`. Its fixture, native shards,
 analysis job, and RLCD job completed successfully. The native verifier reports:
 
 - 3 models × 12 shards, with 960 primary predictions and 384 held-out test predictions.
 - 1,032 evidence forwards, 72 reverse/repeat probes, 36 warmups, and 1,068 total forwards.
 - The same semantic request hashes across models, isolated gold labels, zero new API calls, and zero training steps.
-- Native analysis artifact SHA-256: `3a8536f3dd227f675e379e08c64c713da7adaad73e54c723028f2bb4f6298e88`.
-- RLCD artifact SHA-256: `eb4749c916cdb13768ed30a6279e9a51b1755e84f31e281923981d1f6451c041`.
+- Native analysis artifact SHA-256: `01a4754567779cac2ba58ae8f87017cbf7654eea78cc2e3da366a9dfddc446e3` ([artifact](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/actions/runs/35579322298/artifacts/10629906883)).
+- RLCD artifact SHA-256: `33b657a9af1ef5f5bb88736166956a0aa97510c24bedd553c91f55a08860db0d` ([artifact](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/actions/runs/35579322298/artifacts/10629836216)).
 
 The artifact contains `native_summary.csv`, `primary_predictions.csv`, and
 `verification.json`; the separate RLCD artifact contains `rlcd_smoke.json`.
@@ -50,35 +50,35 @@ recomputed over the complete 128-case test cohort with ten fixed bins.
 
 | Model | BoolQ | OCNLI | CLINC | TMMLU+ | Overall test accuracy | CPU p50 (ms) | CPU p95 (ms) |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Decider-2B | 78.1% | 78.1% | **90.6%** | 43.8% | **72.7% (93/128)** | 4,379.3 | 6,663.5 |
-| Kev-0.8B | 75.0% | 62.5% | 68.8% | 34.4% | 60.2% (77/128) | 935.6 | 1,996.0 |
-| Laya typed decisions | **81.3%** | 50.0% | 78.1% | 18.8% | 57.0% (73/128) | **802.6** | **1,682.3** |
+| Decider-2B | 78.1% | 78.1% | **90.6%** | 43.8% | **72.7% (93/128)** | 4,394.6 | 6,590.5 |
+| Kev-0.8B | 75.0% | 62.5% | 68.8% | 34.4% | 60.2% (77/128) | 975.9 | 1,973.1 |
+| Laya typed decisions | **81.3%** | 50.0% | 78.1% | 18.8% | 57.0% (73/128) | **780.6** | **1,554.3** |
 
 The overall test metrics are:
 
 | Model | Brier ↓ | NLL ↓ | ECE ↓ | Mean input tokens | Test forwards |
 |---|---:|---:|---:|---:|---:|
-| Decider-2B | **0.364638** | **0.610054** | **0.079744** | 116.0 | 128 |
+| Decider-2B | **0.364120** | **0.609449** | **0.079872** | 116.0 | 128 |
 | Kev-0.8B | 0.568567 | 1.175163 | 0.178401 | 113.7 | 128 |
-| Laya typed decisions | 0.528354 | 0.924733 | 0.102875 | 149.0 | 128 |
+| Laya typed decisions | 0.528354 | 0.924733 | 0.102876 | 149.0 | 128 |
 
 The per-dataset calibration and latency records are retained in the published
 `native_summary.csv`. Rounded values from that file are:
 
 | Model | Dataset | Accuracy | Brier | NLL | ECE | p50 ms | p95 ms |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Decider-2B | BoolQ | 78.1% | 0.303278 | 0.434016 | 0.138912 | 5,035.7 | 8,303.8 |
-| Decider-2B | CLINC | 90.6% | 0.102866 | 0.187490 | 0.070219 | 4,381.6 | 4,534.7 |
-| Decider-2B | OCNLI | 78.1% | 0.384275 | 0.638306 | 0.130442 | 4,359.2 | 4,501.0 |
-| Decider-2B | TMMLU+ | 43.8% | 0.668134 | 1.180404 | 0.239636 | 4,373.2 | 7,296.9 |
-| Kev-0.8B | BoolQ | 75.0% | 0.412130 | 0.823689 | 0.188348 | 1,198.6 | 2,484.6 |
-| Kev-0.8B | CLINC | 68.8% | 0.502325 | 1.271485 | 0.163436 | 1,003.2 | 1,131.9 |
-| Kev-0.8B | OCNLI | 62.5% | 0.496863 | 0.873624 | 0.165702 | 859.4 | 959.2 |
-| Kev-0.8B | TMMLU+ | 34.4% | 0.862949 | 1.731853 | 0.275662 | 926.1 | 2,094.8 |
-| Laya typed decisions | BoolQ | 81.3% | 0.310361 | 0.476770 | 0.067525 | 794.0 | 1,565.1 |
-| Laya typed decisions | CLINC | 78.1% | 0.325911 | 0.653337 | 0.178204 | 685.8 | 778.3 |
-| Laya typed decisions | OCNLI | 50.0% | 0.698159 | 1.117961 | 0.215665 | 936.8 | 1,193.0 |
-| Laya typed decisions | TMMLU+ | 18.8% | 0.778985 | 1.450866 | 0.145394 | 958.5 | 2,145.8 |
+| Decider-2B | BoolQ | 78.1% | 0.301486 | 0.432008 | 0.138320 | 5,029.3 | 8,288.0 |
+| Decider-2B | CLINC | 90.6% | 0.102975 | 0.187843 | 0.070538 | 4,382.2 | 4,555.5 |
+| Decider-2B | OCNLI | 78.1% | 0.384191 | 0.638080 | 0.131120 | 4,389.0 | 4,527.3 |
+| Decider-2B | TMMLU+ | 43.8% | 0.667825 | 1.179865 | 0.239619 | 4,393.5 | 7,122.6 |
+| Kev-0.8B | BoolQ | 75.0% | 0.412130 | 0.823689 | 0.188348 | 1,212.5 | 2,442.8 |
+| Kev-0.8B | CLINC | 68.8% | 0.502325 | 1.271485 | 0.163436 | 1,000.9 | 1,102.9 |
+| Kev-0.8B | OCNLI | 62.5% | 0.496863 | 0.873624 | 0.165702 | 869.1 | 940.9 |
+| Kev-0.8B | TMMLU+ | 34.4% | 0.862949 | 1.731854 | 0.275663 | 995.6 | 2,106.7 |
+| Laya typed decisions | BoolQ | 81.3% | 0.310361 | 0.476770 | 0.067525 | 789.6 | 1,596.9 |
+| Laya typed decisions | CLINC | 78.1% | 0.325909 | 0.653336 | 0.178206 | 668.4 | 786.9 |
+| Laya typed decisions | OCNLI | 50.0% | 0.698159 | 1.117961 | 0.215665 | 909.7 | 1,076.6 |
+| Laya typed decisions | TMMLU+ | 18.8% | 0.778985 | 1.450866 | 0.145394 | 941.3 | 2,034.2 |
 
 These are small, fixed transfer cohorts. The registry marks all three native
 models as English, so the OCNLI and TMMLU+ rows should be read as transfer
@@ -95,7 +95,7 @@ cohort. On three hand-authored schema cases, the pinned PyTorch run produced:
 
 | Cases | Valid JSON/schema | Exact match | Mean wall latency |
 |---:|---:|---:|---:|
-| 3 | 100% | 66.7% (2/3) | 1,528.8 ms |
+| 3 | 100% | 66.7% (2/3) | 2,177.2 ms |
 
 This smoke test checks schema execution and latency only. Its exact-match rate
 must not be compared with the BoolQ, OCNLI, CLINC, or TMMLU+ accuracy values.

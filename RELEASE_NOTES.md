@@ -1,7 +1,7 @@
 # Verified Jev-like native cohort and RLCD schema smoke — v1.7.0
 
 Public, non-peer-reviewed technical report for the verified GitHub Actions run
-35577340525. It adds pinned native evaluations for Mapika/decider-2b,
+35579322298. It adds pinned native evaluations for Mapika/decider-2b,
 jaredpalmer/kev-0.8b, and NandhaKishorM/laya through their reproducible source
 and checkpoint revisions, plus a separate smoke test for
 harshatheg/Qwen-2.5-1B-RLCD.
@@ -10,7 +10,7 @@ harshatheg/Qwen-2.5-1B-RLCD.
 - Three native models × 12 shards: 960 primary predictions, 72 reverse/repeat probes, 36 warmups, and 1,068 total forwards.
 - Reports held-out accuracy, Brier score, NLL, ECE, CPU p50/p95 latency, token counts, and pinned provenance.
 - Decider-2B reaches 72.7% held-out accuracy, Kev-0.8B 60.2%, and Laya typed decisions 57.0%; Laya has the lowest recorded CPU p50/p95 among the three.
-- RLCD is kept outside the native leaderboard: 3 schema cases, 100% valid schema, 66.7% exact match, and 1,528.8 ms mean wall latency.
+- RLCD is kept outside the native leaderboard: 3 schema cases, 100% valid schema, 66.7% exact match, and 2,177.2 ms mean wall latency.
 - All verifier gates pass; inference sees no gold labels, makes zero new API calls, and performs zero training steps.
 
 The report does not claim universal MoA superiority, proprietary Jev equivalence,

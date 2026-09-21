@@ -9,17 +9,17 @@ open Jev-like projects: [Mapika/decider-2b](https://huggingface.co/Mapika/decide
 [harshatheg/Qwen-2.5-1B-RLCD](https://huggingface.co/harshatheg/Qwen-2.5-1B-RLCD)
 as a separate constrained-generation smoke test.
 
-[v1.7 Actions run](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/actions/runs/35577340525) · [v1.7 technical results](JEVLIKE_EXTENDED.md) · [v1.7 changelog](V1.7_CHANGELOG.md)
+[v1.7 Actions run](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/actions/runs/35579322298) · [v1.7 technical results](JEVLIKE_EXTENDED.md) · [v1.7 changelog](V1.7_CHANGELOG.md)
 
 | Native model | Held-out accuracy | CPU p50 | CPU p95 |
 |---|---:|---:|---:|
-| Decider-2B | **72.7% (93/128)** | 4,379 ms | 6,664 ms |
-| Kev-0.8B | 60.2% (77/128) | 936 ms | 1,996 ms |
-| Laya typed decisions | 57.0% (73/128) | **803 ms** | **1,682 ms** |
+| Decider-2B | **72.7% (93/128)** | 4,395 ms | 6,590 ms |
+| Kev-0.8B | 60.2% (77/128) | 976 ms | 1,973 ms |
+| Laya typed decisions | 57.0% (73/128) | **781 ms** | **1,554 ms** |
 
 The native cohort covers BoolQ, OCNLI, CLINC, and TMMLU+ with gold-blind
 inference, pinned revisions, 960 primary predictions, and 1,068 total forwards.
-RLCD is reported separately: 3/3 valid schemas, 2/3 exact matches, and 1,529 ms
+RLCD is reported separately: 3/3 valid schemas, 2/3 exact matches, and 2,177 ms
 mean wall latency. These are small transfer-cohort measurements on hosted CPUs;
 they do not establish proprietary Jev equivalence, universal MoA superiority,
 or production latency.
