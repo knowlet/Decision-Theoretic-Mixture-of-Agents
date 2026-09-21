@@ -57,3 +57,12 @@ LEADERBOARDS = {
     "english": ("boolq", "clinc"),
     "ood_chinese": ("ocnli", "tmmluplus"),
 }
+
+
+def json_contract() -> dict:
+    """Registry contract in the JSON-normalized form used by manifests."""
+    return {
+        "datasets": list(DATASETS),
+        "sizes_per_dataset": dict(SIZES),
+        "leaderboards": {name: list(datasets) for name, datasets in LEADERBOARDS.items()},
+    }

@@ -11,10 +11,45 @@ import pandas as pd
 
 from .adapters import sha
 from .expanded_registry import DATASETS, EXPANDED_MODELS, EXPANDED_MODEL_ORDER, LEADERBOARDS, SIZES
+from .expanded_registry import json_contract
 from .fixtures import digest, read_jsonl, write
 from .run import validate_score
 
 PROTOCOL_PATH = Path(__file__).resolve().parent.parent / "expanded_protocol.json"
+
+
+def validate_contract(fixture_manifest: dict) -> dict:
+    """Reject a manifest whose declared cohort differs from the pinned registry.
+
+    Manifests are JSON, so the registry contract is compared in its serialized
+    form: the same datasets, the same per-dataset sizes, and the same
+    leaderboard membership.  Tuples and lists are therefore not interchangeable
+    here by accident; both sides are normalized deliberately.
+    """
+    contract = json_contract()
+    if fixture_manifest.get("datasets") != contract["datasets"]:
+        raise ValueError("expanded dataset contract mismatch")
+    if fixture_manifest.get("sizes_per_dataset") != contract["sizes_per_dataset"]:
+        raise ValueError("expanded fixture size contract mismatch")
+    if fixture_manifest.get("leaderboards") != contract["leaderboards"]:
+        raise ValueError("expanded leaderboard contract mismatch")
+    return contract
+
+
+def validate_protocol(contract: dict) -> dict:
+    """Reject a protocol file that no longer describes the pinned cohort."""
+    protocol = json.loads(PROTOCOL_PATH.read_text())
+    if protocol.get("datasets") != contract["datasets"]:
+        raise ValueError("expanded protocol dataset mismatch")
+    if protocol.get("sizes_per_dataset") != contract["sizes_per_dataset"]:
+        raise ValueError("expanded protocol size mismatch")
+    if protocol.get("leaderboards") != contract["leaderboards"]:
+        raise ValueError("expanded protocol leaderboard mismatch")
+    for name, spec in EXPANDED_MODELS.items():
+        entry = protocol.get("models", {}).get(name, {})
+        if entry.get("repo") != spec["repo"] or entry.get("revision") != spec["revision"]:
+            raise ValueError(f"expanded protocol model mismatch: {name}")
+    return protocol
 
 
 def ece(confidence: np.ndarray, correct: np.ndarray, bins: int = 10) -> float:
@@ -63,10 +98,8 @@ def run(incoming: Path, fixture: Path, evaluation: Path, out: Path) -> None:
     requests = read_jsonl(fixture / "requests.jsonl")
     gold = read_jsonl(evaluation / "gold.jsonl")
     evaluation_manifest = json.loads((evaluation / "manifest.json").read_text())
-    if fixture_manifest.get("sizes_per_dataset") != SIZES:
-        raise ValueError("expanded fixture size contract mismatch")
-    if fixture_manifest.get("leaderboards") != LEADERBOARDS:
-        raise ValueError("expanded leaderboard contract mismatch")
+    contract = validate_contract(fixture_manifest)
+    validate_protocol(contract)
     if fixture_manifest.get("protocol_sha256") != sha(PROTOCOL_PATH):
         raise ValueError("expanded protocol digest mismatch")
     if sha(fixture / "requests.jsonl") != fixture_manifest["requests_sha256"]:

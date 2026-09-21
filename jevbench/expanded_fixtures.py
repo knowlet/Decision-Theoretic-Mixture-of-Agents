@@ -17,15 +17,10 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from .fixtures import REVISIONS, canonical, download, fetch, read_jsonl, row, write
+from .expanded_registry import DATASETS, SIZES, json_contract
 
 ROOT = Path(__file__).resolve().parent
 REPOSITORY_ROOT = ROOT.parent
-DATASETS = ("boolq", "ocnli", "clinc", "tmmluplus")
-SIZES = {"fit": 128, "dev": 64, "test": 200}
-LEADERBOARDS = {
-    "english": ("boolq", "clinc"),
-    "ood_chinese": ("ocnli", "tmmluplus"),
-}
 
 
 def _choose(rows, n, excluded=(), roundrobin=False):
@@ -223,14 +218,16 @@ def prepare(paths: dict[str, Path], out: Path) -> None:
                 raise ValueError(f"wrong {dataset}/{role} count")
     (out / "requests.jsonl").write_text("".join(canonical(r) + "\n" for r in public))
     (out / "gold.jsonl").write_text("".join(canonical(r) + "\n" for r in gold))
+    contract = json_contract()
     write(out / "manifest.json", {
         "version": "1.8.0",
         "revisions": REVISIONS,
         "audit": audits,
         "sources": sources,
         "cases": len(public),
-        "sizes_per_dataset": SIZES,
-        "leaderboards": LEADERBOARDS,
+        "datasets": contract["datasets"],
+        "sizes_per_dataset": contract["sizes_per_dataset"],
+        "leaderboards": contract["leaderboards"],
         "requests_sha256": hashlib.sha256((out / "requests.jsonl").read_bytes()).hexdigest(),
         "gold_sha256": hashlib.sha256((out / "gold.jsonl").read_bytes()).hexdigest(),
         "protocol_sha256": hashlib.sha256((REPOSITORY_ROOT / "expanded_protocol.json").read_bytes()).hexdigest(),
