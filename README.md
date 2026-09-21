@@ -1,19 +1,33 @@
 # Decision-Theoretic Mixture-of-Agents
 
-## v1.8.0 candidate — expanded Jev-like cohort
+## v1.8.0 expanded cohort — verified English and OOD-Chinese leaderboards
 
-The repository now contains a separate expanded benchmark with **128 fit, 64
+The repository contains a separate expanded benchmark with **128 fit, 64
 development, and 200 held-out cases per dataset** for BoolQ, OCNLI, CLINC, and
 TMMLU+. It declares two aggregates before inference: an **English leaderboard**
 (BoolQ and CLINC) and an **OOD-Chinese leaderboard** (OCNLI and TMMLU+). The
 cohort adds the pinned `convaiinnovations/laya-multilingual` checkpoint beside
 Decider-2B, Kev-0.8B, and Laya typed decisions.
 
-This is a candidate protocol and implementation. The latest verified evidence
-remains v1.7 until the expanded workflow completes successfully; no v1.8
-accuracy or latency numbers are claimed here yet.
+[v1.8 verified Actions run](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/actions/runs/35587955356) · [v1.8 technical results](JEVLIKE_EXPANDED.md) · [v1.8 changelog](V1.8_CHANGELOG.md) · [protocol](expanded_protocol.json)
 
-[v1.8 protocol](expanded_protocol.json) · [technical protocol](JEVLIKE_EXPANDED.md) · [changelog](V1.8_CHANGELOG.md) · [Actions workflow](.github/workflows/jevlike-expanded.yml)
+| Model | English (400) | OOD-Chinese (400) | Pooled (800) | CPU p50 |
+|---|---:|---:|---:|---:|
+| Decider-2B | **88.75%** | **55.25%** | **72.00%** | 4,313 ms |
+| Laya typed decisions | 78.50% | 40.50% | 59.50% | 714 ms |
+| Laya multilingual | 73.75% | 47.25% | 60.50% | **201 ms** |
+| Kev-0.8B | 75.25% | 39.00% | 57.13% | 922 ms |
+
+All 50 jobs passed, with 6,272 primary predictions, 96 probe forwards, 48
+warmups, 6,416 total forwards, isolated gold labels, and zero external API
+calls. The multilingual Laya checkpoint is the fastest model here and improves
+OOD-Chinese accuracy over the English Laya checkpoint by 6.75 points, while
+losing 4.75 points on English and a large amount of calibration (ECE 0.2022
+against 0.0460), so it does not dominate it. The larger cohort also revises
+single-dataset pilot numbers: Decider-2B OCNLI moves from 78.1% on 32 cases to
+65.50% on 200. These are hosted-CPU transfer measurements; they do not
+benchmark proprietary Jev, claim production latency, or show universal MoA
+superiority.
 
 ## Latest verified candidate: v1.7.0 — native Jev-like checkpoints and RLCD smoke
 
