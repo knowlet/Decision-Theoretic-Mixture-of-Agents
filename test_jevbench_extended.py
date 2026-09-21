@@ -23,6 +23,9 @@ def test_extended_registry_has_requested_native_models_and_immutable_revisions()
         assert spec["kind"] in {"decider", "kev", "laya"}
     assert EXTENDED_MODELS["kev_08b"]["base_revision"] == "dc7cdfe2ee4154fa7e30f5b51ca41bfa40174e68"
     assert EXTENDED_MODELS["laya_typed"]["source_revision"] == "42626c348753fbb17572a813127df2278a1ec527"
+    assert EXTENDED_MODELS["decider_2b"]["repo"] == "Mapika/decider-2b"
+    assert EXTENDED_MODELS["kev_08b"]["source_repo"] == "jaredpalmer/kev"
+    assert EXTENDED_MODELS["laya_typed"]["source_repo"] == "NandhaKishorM/laya"
 
 
 def test_rlcd_is_explicitly_separate_from_native_heads():

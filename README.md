@@ -1,6 +1,30 @@
 # Decision-Theoretic Mixture-of-Agents
 
-## Latest: v1.5.0 — six tasks, a canonical request fixture, and a 192-question OpenJev head-to-head
+## Latest verified candidate: v1.7.0 — native Jev-like checkpoints and RLCD smoke
+
+The latest verified candidate extends the Actions benchmark with the requested
+open Jev-like projects: [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b),
+[jaredpalmer/kev](https://github.com/jaredpalmer/kev), and
+[NandhaKishorM/laya](https://github.com/NandhaKishorM/laya). It also runs
+[harshatheg/Qwen-2.5-1B-RLCD](https://huggingface.co/harshatheg/Qwen-2.5-1B-RLCD)
+as a separate constrained-generation smoke test.
+
+[v1.7 Actions run](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/actions/runs/35577340525) · [v1.7 technical results](JEVLIKE_EXTENDED.md) · [v1.7 changelog](V1.7_CHANGELOG.md)
+
+| Native model | Held-out accuracy | CPU p50 | CPU p95 |
+|---|---:|---:|---:|
+| Decider-2B | **72.7% (93/128)** | 4,379 ms | 6,664 ms |
+| Kev-0.8B | 60.2% (77/128) | 936 ms | 1,996 ms |
+| Laya typed decisions | 57.0% (73/128) | **803 ms** | **1,682 ms** |
+
+The native cohort covers BoolQ, OCNLI, CLINC, and TMMLU+ with gold-blind
+inference, pinned revisions, 960 primary predictions, and 1,068 total forwards.
+RLCD is reported separately: 3/3 valid schemas, 2/3 exact matches, and 1,529 ms
+mean wall latency. These are small transfer-cohort measurements on hosted CPUs;
+they do not establish proprietary Jev equivalence, universal MoA superiority,
+or production latency.
+
+## Latest published release: v1.5.0 — six tasks, a canonical request fixture, and a 192-question OpenJev head-to-head
 
 **[Full English paper](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/releases/download/v1.5.0/paper.en.pdf)** · **[完整繁體中文論文](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/releases/download/v1.5.0/paper.zh-TW.pdf)** · [Versioned release](https://github.com/knowlet/Decision-Theoretic-Mixture-of-Agents/releases/tag/v1.5.0)
 
