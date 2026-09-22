@@ -31,6 +31,12 @@ def observed_keys(frame, columns):
     return keys
 
 
+def require_key_coverage(frame, columns, expected, what):
+    observed = observed_keys(frame, columns)
+    if observed != expected:
+        raise AssertionError(f'{what} is missing runs: {len(observed)}/{len(expected)} dataset/seed/method keys present')
+
+
 def require_exact_keys(frame, columns, expected, what):
     observed = observed_keys(frame, columns)
     if observed != expected or len(frame) != len(expected):
@@ -49,7 +55,7 @@ def validate(directory,cache):
     ledger=pd.read_csv(directory/'per_case.csv',dtype={'sample_id':str})
     manifest=pd.read_csv(directory/'split_roles.csv',dtype={'sample_id':str})
     expected_runs = expected_run_keys()
-    require_exact_keys(ledger, ['dataset', 'seed', 'method'], expected_runs, 'per_case.csv')
+    require_key_coverage(ledger, ['dataset', 'seed', 'method'], expected_runs, 'per_case.csv')
     assert not ledger.duplicated(['dataset','sample_id','seed','method']).any()
     assert np.isfinite(ledger[['objective','loss','queries','cost']]).all().all()
     assert ledger.queries.between(0,3).all() and (ledger.queries==ledger.queries.astype(int)).all()

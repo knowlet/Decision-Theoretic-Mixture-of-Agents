@@ -35,6 +35,27 @@ def test_run_keys_require_full_cartesian_product():
                               ci.expected_gate_keys(), 'promotion_gates.csv')
 
 
+def test_per_case_ledger_uses_coverage_not_row_count():
+    # per_case.csv holds one row per case, so several rows share a run key:
+    # coverage must pass while one-row-per-key must reject the same frame.
+    rows = []
+    for ds in t.PRIMARY_DATASETS:
+        for seed in study.SEEDS:
+            for m in study.METHODS:
+                rows.extend([(ds, seed, m)] * 3)
+    frame = _keys_frame(rows, ['dataset', 'seed', 'method'])
+    ci.require_key_coverage(frame, ['dataset', 'seed', 'method'],
+                            ci.expected_run_keys(), 'per_case.csv')
+    with pytest.raises(AssertionError):
+        ci.require_exact_keys(frame, ['dataset', 'seed', 'method'],
+                              ci.expected_run_keys(), 'per_case.csv')
+    short = [r for r in rows if r != ('jigsaw', 1602, 'guarded_selected')]
+    with pytest.raises(AssertionError):
+        ci.require_key_coverage(_keys_frame(short, ['dataset', 'seed', 'method']),
+                                ['dataset', 'seed', 'method'],
+                                ci.expected_run_keys(), 'per_case.csv')
+
+
 def _comparison_frame(seed):
     rows = []
     for dataset in t.PRIMARY_DATASETS:
