@@ -1,0 +1,18 @@
+{
+  "version": "1.6.0-candidate",
+  "baseline_commit": "89d4e3846050fed3413450d31f7f88d1cd56d652",
+  "status": "Prospective implementation checkpoint after reading v1.5 results, before executing the new candidate algorithms; not external preregistration. Published benchmark test outcomes have already been inspected in previous versions, so all empirical claims remain exploratory.",
+  "source": "Existing seven immutable ProEval files and hashes in transfer_protocol.json; six binary tasks, DICES excluded from policy tuning/evaluation",
+  "pools": ["replacement"],
+  "split": "Keep original train/dev/test group hashes. Split original training 40% representation / 60% risk-table calibration; split original development 60% tuning / 40% independent promotion gate, with group-hashed seed 1601. Original test never selects parameters. Additional seeds 1602 and 1603 are selection-sensitivity analyses, not independent test samples.",
+  "methods": ["legacy_bellman", "compiled_legacy", "polarity_bellman", "context_bellman", "context_polarity", "tuning_selected", "guarded_selected"],
+  "information": "All methods have the same four archived workers and up to three queries. Polarity preserves yes/no or toxic/non-toxic only for StrategyQA/Jigsaw; other tasks preserve answer equality. Context uses task text through a representation-only fitted ridge head and a two-bin predicted mean-error partition. No current-task gold or unacquired answer is exposed to policies.",
+  "hyperparameters": {"legacy_prior": [1.0, 10.0, 100.0], "polarity_prior": [1.0, 10.0, 100.0], "context_shrinkage": [32.0, 128.0], "min_context_support": 32},
+  "context_fit": "Prompt head fits only representation records. Median predicted mean-error split is fixed there. Leaf risk distributions fit disjoint calibration records, shrunk toward the calibration global joint distribution. Sparse leaves use the global table.",
+  "objective": {"wrong_answer": 1.0, "defer": 0.25, "per_query": 0.01, "budget": 3},
+  "selection": "Family hyperparameters and one challenger are chosen only on tuning data, with deterministic complexity-first tie breaking. An independent paired empirical-Bernstein gate at alpha=0.05 may promote this single challenger over the tuning-selected legacy incumbent. Otherwise use incumbent. Gate may be conservative; no guaranteed improvement or coverage under drift is claimed.",
+  "engineering": "Compiled policies must match the selected legacy's action/choice behavior on all 52 complete equality patterns. New reusable policy serialization is canonical, pool-version bound, finite and fail-closed. Unknown pool versions, unauthorized queries, invalid probability/risk tables and malformed artifacts fail. No neural inference is required.",
+  "inference": "2000 paired exact-question-group bootstraps stratified by dataset, macro averaged, for seed1601. Four planned contrasts: polarity-vs-legacy, context-polarity-vs-legacy, tuning-selected-vs-legacy, guarded-selected-vs-legacy. Report ordinary 95% and Bonferroni-style 98.75% intervals. Seed1602/1603 reported separately.",
+  "runtime": "Microbenchmark legacy versus compiled, interleaved order, same process and inputs, warmup excluded; include median and p95, construction costs and serialized size. No invented LLM latency/dollars. A separate repeated process must reproduce scientific outputs.",
+  "limits": ["No proprietary Jev calls", "No new LLM worker generation", "No CERA training", "GQA image is unavailable", "No new independently collected dataset", "Repeated test use limits confirmatory inference", "No human preference experiment", "CPU acceleration is implementation improvement, not reasoning superiority"]
+}
