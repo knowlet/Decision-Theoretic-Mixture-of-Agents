@@ -32,16 +32,24 @@ The Actions workflow **Answer-aware optimizer validation** executes the same pat
 From the repository root, after generating/extracting the evidence:
 
 ```python
+import hashlib
 from pathlib import Path
+import pandas as pd
 from adaptive_router import CompiledPolicy, Pool
 import transfer_study as source
 
 pool = Pool(tuple(source.POOL_NAMES['replacement']),
             '9d37b037d1d91f4b78a7ddd74a43a8aecb344c66:replacement')
-policy = CompiledPolicy.from_json(
-    Path('results/optimizer/policies/jigsaw-1601-compiled_legacy.json').read_text(),
-    expected_pool=pool,
-)
+policy_path = Path('results/optimizer/policies/jigsaw-1601-compiled_legacy.json')
+# Authenticate the artifact against the out-of-band export manifest before
+# loading: schema validation alone does not prove the file is untampered.
+document = policy_path.read_bytes()
+manifest = pd.read_csv('results/optimizer/exports.csv', dtype=str)
+row = manifest[(manifest.dataset == 'jigsaw') & (manifest.seed == '1601')
+               & (manifest.method == 'compiled_legacy')]
+assert len(row) == 1 and int(row.iloc[0]['bytes']) == len(document)
+assert hashlib.sha256(document).hexdigest() == row.iloc[0]['sha256']
+policy = CompiledPolicy.from_json(document.decode(), expected_pool=pool)
 # Illustrative acquired-response provider. A real provider must normalize its
 # actual response and cache the returned candidate under the same worker ID.
 responses = {0: 'no', 1: 'yes', 2: 'no', 3: 'no'}
@@ -66,6 +74,6 @@ The original train/dev/test assignment is retained. Representation/risk fitting 
 
 ## Proof and verification scope
 
-The larger state space supports the same conditional finite Bellman proof, but a richer fitted model is not guaranteed to generalize better. A separate recursive enumerator checks the polarity policy's expected risk without production transition tables. Compiled incumbents match all 52 equality/INVALID patterns, five supported legacy modes and multiple generated distributions; fitted experiment policies are checked again over all patterns and test cases. Serialization must preserve actual decisions. Model-pool revision, unknown actions, malformed states, invalid risks and unacquired outputs fail closed.
+The larger state space supports the same conditional finite Bellman proof, but a richer fitted model is not guaranteed to generalize better. A separate recursive enumerator checks the polarity policy's expected risk without production transition tables. Compiled incumbents match all 52 equality/INVALID patterns, five supported legacy modes and multiple generated distributions; fitted experiment policies are re-verified by JSON round-trip decision equality on their held-out test cases, not by exhaustive all-pattern enumeration. Serialization must preserve actual decisions. Model-pool revision, unknown actions, malformed states, invalid risks and unacquired outputs fail closed.
 
 Timing compares legacy versus compiled callbacks in the same process with interleaved execution. It excludes fitting, compilation and LLM serving; it is not a model-intelligence or token-throughput claim. Reports and evidence are generated from successful hosted runs rather than hard-coded score tables.

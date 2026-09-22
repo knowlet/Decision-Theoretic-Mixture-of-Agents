@@ -27,6 +27,20 @@ def main():
     class_rows=pd.read_csv(R/'class_outcomes.csv')
     class_rows=class_rows[(class_rows.seed==1601)&(class_rows.dataset=='jigsaw')&class_rows.method.isin(['legacy_bellman','polarity_bellman','context_polarity'])]
     class_table=table(class_rows,['method','gold','n','correct','wrong','deferred'])
+    def cell(method, gold, column):
+        row = class_rows[(class_rows.method == method) & (class_rows.gold == gold)]
+        assert len(row) == 1, f'missing class diagnostic for {method}/{gold}'
+        return int(row.iloc[0][column])
+    nontoxic_n = cell('legacy_bellman', 'no', 'n')
+    toxic_n = cell('legacy_bellman', 'yes', 'n')
+    new_toxic_correct = {m: cell(m, 'yes', 'correct') for m in ('polarity_bellman', 'context_polarity')}
+    new_nontoxic_wrong = {m: cell(m, 'no', 'wrong') for m in ('polarity_bellman', 'context_polarity')}
+    legacy_nontoxic_wrong = cell('legacy_bellman', 'no', 'wrong')
+    jig_gate = g[(g.dataset == 'jigsaw') & (g.seed == 1601)]
+    assert len(jig_gate) >= 1, 'missing Jigsaw gate rows'
+    jig_promoted = bool(jig_gate.promote.any())
+    guarded_status = 'promotes a challenger on the reported seed' if jig_promoted else 'remains the incumbent on the reported seed'
+    zh_guarded = '已在報告機組上推出挑戰者' if jig_promoted else '在報告機組上仍維持原策略'
     text=f'''# Answer-aware routing optimization — v1.6 candidate
 
 Experiment commit: `{v['tested_commit']}`. Hosted evidence: {v['run_url']}.
@@ -44,7 +58,7 @@ Tuning is separate from an independent promotion gate. A single tuning-selected 
 
 ## Main results
 
-Six existing binary datasets, 1,732 original test cases; c=0.01 per worker response, wrong loss=1, defer=0.25, at most three responses. Costs are assumed loss units, not dollars. Context-head CPU cost is not in J. Old test outcomes were previously inspected; this is exploratory repeated-benchmark optimization, not external confirmation. The legacy baseline is refitted using the same restricted tuning subset, not silently given access to the gate.
+Six existing binary datasets, 1,732 original test cases; c=0.01 per worker response, wrong loss=1, defer=0.25, at most three responses. Costs are assumed loss units, not dollars. Context-head CPU cost is not in J. Old test outcomes were previously inspected; this is exploratory repeated-benchmark optimization, not external confirmation. The legacy baseline is fitted on the original training split, with only its strength chosen on the tuning subset; it is not given gate data.
 
 {table(rows,['method','objective','coverage','queries'])}
 
@@ -58,7 +72,7 @@ Direction-aware states only apply to StrategyQA/Jigsaw. Other tasks preserve equ
 
 {class_table}
 
-For Jigsaw, yes is toxic. The average gain largely removes false positives among 290 non-toxic cases, while neither new candidate correctly returns a toxic answer among 14 positive cases. This prevents an unqualified detection-quality claim. Guarded deployment remains the incumbent. A deployment valuing missed toxicity more strongly needs an explicit asymmetric loss and a separately validated policy. Changing scoring weights after seeing results is not presented as a primary experiment. This audit uses the same archive gold and changes no policies.
+For Jigsaw, yes is toxic. The average gain largely removes false positives among {nontoxic_n} non-toxic cases (legacy {legacy_nontoxic_wrong} wrong, polarity {new_nontoxic_wrong['polarity_bellman']} wrong, context+polarity {new_nontoxic_wrong['context_polarity']} wrong), while the new candidates correctly return a toxic answer in {new_toxic_correct['polarity_bellman']} and {new_toxic_correct['context_polarity']} of {toxic_n} positive cases respectively. This prevents an unqualified detection-quality claim. Guarded deployment {guarded_status}. A deployment valuing missed toxicity more strongly needs an explicit asymmetric loss and a separately validated policy. Changing scoring weights after seeing results is not presented as a primary experiment. This audit uses the same archive gold and changes no policies.
 
 ### Paired uncertainty
 
@@ -90,7 +104,7 @@ Amortized nanoseconds per callback execution; interleaved order, same process, 3
 
 {v['tests']} tests, zero failures/skips; two complete processes; {v['ledger_rows']} per-case method/seed records and {v['exported_policies']} validated JSON artifacts per run. Repeated records are not new questions. Gates independently recompute cost, source-label errors, gate decisions, sample sets, split isolation, serialized hashes and repeated outputs. Only timing columns are excluded.
 
-Use `policies/<dataset>-1601-compiled_legacy.json` for exact-behavior acceleration or `policies/<dataset>-1601-guarded_selected.json` for gated output. Other files are experimental. Ordered model identities and pool revision must match. ContextRouter adds prompt features; CompiledPolicy needs only acquired-response callbacks.
+Use `results/optimizer/policies/<dataset>-1601-compiled_legacy.json` for exact-behavior acceleration or `results/optimizer/policies/<dataset>-1601-guarded_selected.json` for gated output. Other files are experimental. Ordered model identities and pool revision must match. ContextRouter adds prompt features; CompiledPolicy needs only acquired-response callbacks.
 
 No proprietary Jev inference, new worker generation, CERA training, new datasets or human preferences. Existing releases remain unchanged.
 
@@ -126,7 +140,7 @@ scikit-learn, Common pitfalls / Data leakage. https://scikit-learn.org/stable/co
 
 {class_table}
 
-Jigsaw的yes代表毒性。新候選減少290個非毒性案例的誤判，但在14個毒性案例中均沒有正確回傳毒性答案；不能稱作偵測能力全面提升。預設更新未獲核准。重視漏判的部署須先指定不對稱損失，再驗證策略，不得看到測試後改指標冒充原實驗。這是同一歸檔真值的事後診斷，未改動主要策略。
+Jigsaw的yes代表毒性。新候選減少{nontoxic_n}個非毒性案例的誤判（舊策略{legacy_nontoxic_wrong}個誤判，新候選分別{new_nontoxic_wrong['polarity_bellman']}與{new_nontoxic_wrong['context_polarity']}個），但在{toxic_n}個毒性案例中分別僅正確回傳{new_toxic_correct['polarity_bellman']}與{new_toxic_correct['context_polarity']}個；不能稱作偵測能力全面提升。預設更新{zh_guarded}。重視漏判的部署須先指定不對稱損失，再驗證策略，不得看到測試後改指標冒充原實驗。這是同一歸檔真值的事後診斷，未改動主要策略。
 
 ## 配對區間
 

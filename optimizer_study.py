@@ -163,9 +163,11 @@ def summarize(frame):
     return pd.DataFrame(rows)
 
 
-def comparisons(frame):
+def comparisons(frame, primary_seed=SEEDS[0]):
     contrasts=('polarity_bellman','context_polarity','tuning_selected','guarded_selected');rows=[]
-    frame=frame[frame.seed==1601]
+    frame=frame[frame.seed==primary_seed]
+    if frame.empty:
+        raise ValueError('Primary seed has no test rows')
     for method in contrasts:
         distributions=[];means=[]
         for j,dataset in enumerate(t.PRIMARY_DATASETS):
@@ -174,7 +176,7 @@ def comparisons(frame):
             if y.objective.isna().any():raise ValueError('Unpaired cases')
             diff=x.objective-y.objective
             grouped=pd.DataFrame({'group':x.group,'diff':diff}).groupby('group')['diff'].agg(['sum','count'])
-            rng=np.random.default_rng(np.random.SeedSequence([160109,j]));values=[];n=len(grouped)
+            rng=np.random.default_rng(np.random.SeedSequence([primary_seed*100+9,j]));values=[];n=len(grouped)
             for _ in range(20):
                 ix=rng.integers(0,n,(100,n));values.extend(grouped['sum'].to_numpy()[ix].sum(1)/grouped['count'].to_numpy()[ix].sum(1))
             lo,hi=np.quantile(values,[.025,.975]);rows.append(dict(dataset=dataset,method=method,difference=diff.mean(),lo=lo,hi=hi,groups=n))
@@ -222,7 +224,7 @@ def run(cache,out,seeds=SEEDS):
     frame.to_csv(out/'per_case.csv',index=False);manifest.to_csv(out/'split_roles.csv',index=False)
     summary=summarize(frame);summary.to_csv(out/'summary.csv',index=False)
     macro=summary.groupby(['seed','method']).agg(objective=('objective','mean'),coverage=('coverage','mean'),queries=('queries','mean')).reset_index()
-    macro.to_csv(out/'macro.csv',index=False);comparisons(frame).to_csv(out/'comparisons.csv',index=False)
+    macro.to_csv(out/'macro.csv',index=False);comparisons(frame,seeds[0]).to_csv(out/'comparisons.csv',index=False)
     pd.concat(gate_ledgers,ignore_index=True).to_csv(out/'gate_cases.csv',index=False)
     pd.DataFrame(select_rows).to_csv(out/'selection.csv',index=False);pd.DataFrame(guards).to_csv(out/'promotion_gates.csv',index=False)
     pd.DataFrame(timing).to_csv(out/'runtime.csv',index=False);pd.DataFrame(resources).to_csv(out/'fit_resources.csv',index=False)

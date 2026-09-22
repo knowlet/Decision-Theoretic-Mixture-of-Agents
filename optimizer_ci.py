@@ -12,6 +12,31 @@ import optimizer_study as study
 import transfer_study as t
 
 
+def expected_run_keys():
+    return {(ds, int(seed), m) for ds in t.PRIMARY_DATASETS for seed in study.SEEDS for m in study.METHODS}
+
+
+def expected_gate_keys():
+    return {(ds, int(seed)) for ds in t.PRIMARY_DATASETS for seed in study.SEEDS}
+
+
+def observed_keys(frame, columns):
+    keys = set()
+    for row in frame.itertuples():
+        key = []
+        for column in columns:
+            value = getattr(row, column)
+            key.append(int(value) if column == 'seed' else str(value))
+        keys.add(tuple(key))
+    return keys
+
+
+def require_exact_keys(frame, columns, expected, what):
+    observed = observed_keys(frame, columns)
+    if observed != expected or len(frame) != len(expected):
+        raise AssertionError(f'{what} must hold exactly one row per key: {len(observed)}/{len(expected)} distinct')
+
+
 def test_count(path):
     cases=list(ET.parse(path).getroot().iter('testcase'))
     if len(cases)<377:raise AssertionError('Incomplete regression suite')
@@ -23,9 +48,8 @@ def test_count(path):
 def validate(directory,cache):
     ledger=pd.read_csv(directory/'per_case.csv',dtype={'sample_id':str})
     manifest=pd.read_csv(directory/'split_roles.csv',dtype={'sample_id':str})
-    if set(ledger.method)!=set(study.METHODS) or set(ledger.seed)!=set(study.SEEDS):
-        raise AssertionError('Missing algorithms/seeds')
-    assert set(ledger.dataset)==set(t.PRIMARY_DATASETS)
+    expected_runs = expected_run_keys()
+    require_exact_keys(ledger, ['dataset', 'seed', 'method'], expected_runs, 'per_case.csv')
     assert not ledger.duplicated(['dataset','sample_id','seed','method']).any()
     assert np.isfinite(ledger[['objective','loss','queries','cost']]).all().all()
     assert ledger.queries.between(0,3).all() and (ledger.queries==ledger.queries.astype(int)).all()
@@ -59,6 +83,7 @@ def validate(directory,cache):
         cols=['selected','query_order','objective']
         pd.testing.assert_frame_equal(old[cols].reset_index(drop=True),new[cols].reset_index(drop=True),check_dtype=False)
     gates=pd.read_csv(directory/'promotion_gates.csv');gatedata=pd.read_csv(directory/'gate_cases.csv')
+    require_exact_keys(gates, ['dataset', 'seed'], expected_gate_keys(), 'promotion_gates.csv')
     for row in gates.itertuples():
         g=gatedata[(gatedata.dataset==row.dataset)&(gatedata.seed==row.seed)]
         eligible=manifest[(manifest.dataset==row.dataset)&(manifest.seed==row.seed)&(manifest.role=='promotion_gate')]
@@ -66,12 +91,17 @@ def validate(directory,cache):
         bound=ar.promotion_bound((g.candidate_risk-g.incumbent_risk).to_numpy())
         assert abs(bound['upper_difference']-row.upper_difference)<1e-10
         assert bound['promote']==row.promote
+        f=ledger[(ledger.dataset==row.dataset)&(ledger.seed==row.seed)]
+        x=f[f.method=='guarded_selected'].sort_values('sample_id')
         if not row.promote:
-            f=ledger[(ledger.dataset==row.dataset)&(ledger.seed==row.seed)]
-            x=f[f.method=='guarded_selected'].sort_values('sample_id');y=f[f.method=='compiled_legacy'].sort_values('sample_id')
+            y=f[f.method=='compiled_legacy'].sort_values('sample_id')
+            pd.testing.assert_frame_equal(x[['selected','objective','query_order']].reset_index(drop=True),y[['selected','objective','query_order']].reset_index(drop=True))
+        else:
+            y=f[f.method=='tuning_selected'].sort_values('sample_id')
             pd.testing.assert_frame_equal(x[['selected','objective','query_order']].reset_index(drop=True),y[['selected','objective','query_order']].reset_index(drop=True))
     exports=pd.read_csv(directory/'exports.csv')
-    assert len(exports)==6*3*7 and exports.roundtrip_exact_decisions.all()
+    require_exact_keys(exports, ['dataset', 'seed', 'method'], expected_runs, 'exports.csv')
+    assert exports.roundtrip_exact_decisions.all()
     for r in exports.itertuples():
         path=directory/'policies'/f'{r.dataset}-{r.seed}-{r.method}.json'
         assert t.digest(path)==r.sha256 and path.stat().st_size==r.bytes

@@ -2,7 +2,7 @@ name: Answer-aware optimizer validation
 on:
   push:
     branches: ['optimize/answer-aware-router', develop]
-    paths: ['.github/workflows/optimizer.yml', 'optimizer*.py', 'optimizer_protocol.json', 'adaptive_router.py', 'test_adaptive_router.py']
+    paths: ['.github/workflows/optimizer.yml', 'optimizer*.py', 'optimizer_protocol.json', 'adaptive_router.py', 'test_adaptive_router.py', 'transfer_study.py', 'transfer_protocol.json', 'requirements-transfer.txt']
   workflow_dispatch:
 permissions:
   contents: read

@@ -184,6 +184,10 @@ def test_group_split_invariant_under_label_changes():
 def test_policy_does_not_see_unqueried_answers():
     responses,errors=data();old=t.Policy(t.World(responses,errors),'single');new=a.CompiledPolicy.from_legacy(old,POOL)
     first=new._records[(0,())][0]
+    # `single` structurally queries worker 0 at the root, so `first` must be
+    # non-empty: without this guard the test below would pass vacuously if the
+    # fixture ever stopped forcing an acquisition.
+    assert first, 'fixture must force at least one acquisition'
     calls=[]
     def acquire(i):
         assert i in first
