@@ -23,6 +23,40 @@ ROOT = Path(__file__).resolve().parent
 REPOSITORY_ROOT = ROOT.parent
 
 
+def source_inventory(paths: dict[str, Path]) -> list[dict]:
+    """Hash only files consumed by this fixture, relative to each dataset root.
+
+    The download root may itself be named .cache. Hugging Face bookkeeping
+    and other metadata are not inputs; symlinks outside a dataset are rejected.
+    """
+    patterns = {
+        "boolq": ("data/train*.parquet", "data/validation*.parquet"),
+        "ocnli": ("train.50k.json", "dev.json"),
+        "clinc": ("data_full.json",),
+        "tmmluplus": ("data/*_dev.csv", "data/*_val.csv", "data/*_test.csv"),
+    }
+    sources = []
+    for dataset, path in sorted(paths.items()):
+        if dataset not in patterns:
+            raise ValueError(f"Unknown fixture dataset: {dataset}")
+        root = path.resolve(strict=True)
+        candidates = {candidate for pattern in patterns[dataset] for candidate in path.glob(pattern)}
+        for candidate in sorted(candidates):
+            resolved = candidate.resolve(strict=True)
+            if not resolved.is_relative_to(root):
+                raise ValueError(f"Fixture source escapes dataset root: {dataset}/{candidate.relative_to(path)}")
+            if not candidate.is_file():
+                continue
+            content = candidate.read_bytes()
+            sources.append({
+                "dataset": dataset,
+                "file": candidate.relative_to(path).as_posix(),
+                "sha256": hashlib.sha256(content).hexdigest(),
+                "bytes": len(content),
+            })
+    return sources
+
+
 def _choose(rows, n, excluded=(), roundrobin=False):
     excluded = set(excluded)
     seen = set()
@@ -58,16 +92,7 @@ def prepare(paths: dict[str, Path], out: Path) -> None:
     selected = []
     audits = {}
     allrows = {}
-    sources = []
-    for dataset, path in paths.items():
-        for candidate in sorted(path.rglob("*")):
-            if candidate.is_file() and ".cache" not in candidate.parts and candidate.suffix in (".json", ".csv", ".parquet"):
-                sources.append({
-                    "dataset": dataset,
-                    "file": str(candidate.relative_to(path)),
-                    "sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
-                    "bytes": candidate.stat().st_size,
-                })
+    sources = source_inventory(paths)
 
     yes_no = [{"id": "no", "text": "No"}, {"id": "yes", "text": "Yes"}]
     allrows["boolq"] = {}
@@ -242,3 +267,4 @@ if __name__ == "__main__":
     parser.add_argument("--out", type=Path, default=Path("fixture-expanded"))
     args = parser.parse_args()
     prepare(download(args.cache), args.out)
+
