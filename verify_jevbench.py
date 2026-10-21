@@ -74,6 +74,18 @@ def collect_records(incoming: pathlib.Path):
     return found, shards
 
 
+def _is_probability_simplex(probabilities):
+    """Reject invalid numbers before arithmetic; keep the existing sum tolerance."""
+    try:
+        return bool(probabilities) and all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and value >= 0 for value in probabilities
+        ) and abs(sum(probabilities) - 1) <= 1e-6
+    except OverflowError:
+        # JSON integers can exceed the range accepted by math.isfinite/sum.
+        return False
+
+
 def check_contracts(requests, gold, manifest, manifest_eval, records, problems, expected=None):
     """Fixture digests, coverage, and per-record probability contracts."""
     expected = expected or {"primary": EXPECTED_PRIMARY, "reverse": EXPECTED_REVERSE, "repeat": EXPECTED_REPEAT}
@@ -113,9 +125,11 @@ def check_contracts(requests, gold, manifest, manifest_eval, records, problems, 
             if score["option_ids"] != option_ids:
                 problems.append(f"{model}: option order changed for {rid}")
             probabilities = score["probabilities"]
-            if len(probabilities) != len(option_ids):
+            if not isinstance(probabilities, (list, tuple)):
+                problems.append(f"{model}: probabilities are not a simplex for {rid}")
+            elif len(probabilities) != len(option_ids):
                 problems.append(f"{model}: probability count mismatch for {rid}")
-            elif abs(sum(probabilities) - 1) > 1e-6 or min(probabilities) < 0:
+            elif not _is_probability_simplex(probabilities):
                 problems.append(f"{model}: probabilities are not a simplex for {rid}")
             if score.get("backbone_calls") != 1 or score.get("decode_steps") != 0:
                 problems.append(f"{model}: unexpected backbone calls or decode steps for {rid}")
@@ -178,8 +192,7 @@ def run(incoming: pathlib.Path, fixture: pathlib.Path, evaluation: pathlib.Path,
         problems.append("gold.jsonl does not match its manifest digest")
     records, shards = collect_records(incoming)
     check_contracts(requests, gold, manifest, manifest_eval, records, problems)
-    rows = native_rows(requests, gold, records)
-    summary = summarise(rows)
+    summary = summarise(native_rows(requests, gold, records)) if not problems else []
     out.mkdir(parents=True, exist_ok=True)
     (out / "independent_native.json").write_text(json.dumps(
         {"version": "1.6.0", "reader": "verify_jevbench.py", "shards": len(shards),

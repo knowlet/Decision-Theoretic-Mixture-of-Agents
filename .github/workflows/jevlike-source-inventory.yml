@@ -9,6 +9,8 @@ on:
       - 'jevbench/fixtures.py'
       - 'expanded_protocol.json'
       - 'test_jevbench_source_inventory.py'
+      - 'verify_jevbench.py'
+      - 'test_verify_jevbench.py'
       - 'requirements.txt'
       - 'requirements-transfer.txt'
   workflow_dispatch:
@@ -33,5 +35,7 @@ jobs:
         run: python -m pip install -r requirements-transfer.txt
       - name: Test synthetic local sources only
         run: python -m unittest -v test_jevbench_source_inventory.py
+      - name: Test independent reader with synthetic evidence only
+        run: python -m pytest -q test_verify_jevbench.py
       - name: Compile changed Python files
-        run: python -m compileall -q jevbench/expanded_fixtures.py test_jevbench_source_inventory.py
+        run: python -m compileall -q jevbench/expanded_fixtures.py test_jevbench_source_inventory.py verify_jevbench.py test_verify_jevbench.py
