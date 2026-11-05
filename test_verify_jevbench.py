@@ -262,6 +262,59 @@ def test_reader_does_not_import_the_analysis_package():
         "the independent reader must not reuse the analysis package it checks")
 
 
+@pytest.mark.parametrize("field,value", [
+    ("dataset", "ocnli"), ("dataset", "unknown"), ("dataset", None),
+    ("role", "train"), ("role", "validation"), ("role", None),
+])
+def test_reader_refuses_changed_cohort_metadata(field, value):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    record = records[(verify_jevbench.MODELS[0], "primary")][0]
+    if value is None:
+        record.pop(field)
+    else:
+        record[field] = value
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert len(problems) == 1
+    assert field in problems[0] and "boolq:abc" in problems[0]
+
+
+@pytest.mark.parametrize("field,value", [("dataset", "ocnli"), ("role", "train")])
+def test_cli_refuses_relabelled_cohorts_without_deriving_summary(cli_evidence, field, value):
+    incoming, fixture, evaluation, out = cli_evidence
+    path = incoming / "jev16-shard-00" / "results" / verify_jevbench.MODELS[0] / "predictions.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    # A wrong answer must not disappear from the test cohort or move datasets.
+    rows[0]["score"]["probabilities"] = [0.8, 0.2]
+    rows[0][field] = value
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    completed = subprocess.run([
+        sys.executable, str(Path(verify_jevbench.__file__).resolve()),
+        "--incoming", str(incoming), "--fixture", str(fixture),
+        "--evaluation", str(evaluation), "--out", str(out),
+    ], capture_output=True, text=True, check=False)
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "Traceback" not in completed.stderr
+    report = json.loads((out / "independent_native.json").read_text())
+    assert len(report["problems"]) == 1 and field in report["problems"][0]
+    assert report["summary"] == []
+
+
+@pytest.mark.parametrize("dataset,role", [("boolq", "test"), ("ocnli", "train"),
+                                         ("clinc", "validation"), ("tmmluplus", "test")])
+def test_reader_preserves_matching_fixture_cohorts(dataset, role):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    row.update(dataset=dataset, role=role)
+    gold[0].update(dataset=dataset, role=role)
+    for model in verify_jevbench.MODELS:
+        records[(model, "primary")][0].update(dataset=dataset, role=role)
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert problems == []
+
+
 @pytest.mark.parametrize("raw_latency,valid", [
     ("1", True), ("0.25", True), ("1e-300", True), ("1e308", True),
     ("NaN", False), ("Infinity", False), ("-Infinity", False),

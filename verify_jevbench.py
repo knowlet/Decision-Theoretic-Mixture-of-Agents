@@ -131,6 +131,11 @@ def check_contracts(requests, gold, manifest, manifest_eval, records, problems, 
                 continue
             if record["request_sha256"] != digest(row["request"]):
                 problems.append(f"{model}: request hash mismatch for {rid}")
+            # Cohort labels live outside the hashed request payload. Bind them
+            # to the fixture before they can select or group summary records.
+            for field in ("dataset", "role"):
+                if record.get(field) != row[field]:
+                    problems.append(f"{model}: {field} differs from fixture for {rid}")
             option_ids = [option["id"] for option in row["request"]["options"]]
             if score["option_ids"] != option_ids:
                 problems.append(f"{model}: option order changed for {rid}")
