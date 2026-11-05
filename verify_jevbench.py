@@ -86,6 +86,16 @@ def _is_probability_simplex(probabilities):
         return False
 
 
+def _is_positive_finite_number(value):
+    """Treat malformed timing evidence as a contract failure, not an exception."""
+    try:
+        return (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and math.isfinite(value) and value > 0)
+    except OverflowError:
+        # JSON integers can exceed the range accepted by math.isfinite.
+        return False
+
+
 def check_contracts(requests, gold, manifest, manifest_eval, records, problems, expected=None):
     """Fixture digests, coverage, and per-record probability contracts."""
     expected = expected or {"primary": EXPECTED_PRIMARY, "reverse": EXPECTED_REVERSE, "repeat": EXPECTED_REPEAT}
@@ -133,8 +143,8 @@ def check_contracts(requests, gold, manifest, manifest_eval, records, problems, 
                 problems.append(f"{model}: probabilities are not a simplex for {rid}")
             if score.get("backbone_calls") != 1 or score.get("decode_steps") != 0:
                 problems.append(f"{model}: unexpected backbone calls or decode steps for {rid}")
-            if not (score.get("total_ms", 0) > 0):
-                problems.append(f"{model}: non-positive measured latency for {rid}")
+            if not _is_positive_finite_number(score.get("total_ms")):
+                problems.append(f"{model}: invalid measured latency for {rid}; expected a positive finite number")
         missing = [rid for rid in by_id if rid not in seen]
         if missing:
             problems.append(f"{model}: {len(missing)} requests without a primary record")

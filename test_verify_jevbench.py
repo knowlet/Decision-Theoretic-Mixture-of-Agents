@@ -113,6 +113,31 @@ def test_reader_refuses_a_missing_primary_record():
     assert any("without a primary record" in p for p in problems)
 
 
+@pytest.mark.parametrize("latency", [
+    math.nan, math.inf, -math.inf, 0, -1, True, False, None, "10", [], {}, 10**400,
+])
+def test_reader_refuses_invalid_measured_latencies(latency):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    model = verify_jevbench.MODELS[0]
+    records[(model, "primary")][0]["score"]["total_ms"] = latency
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert len(problems) == 1
+    assert model in problems[0] and row["request"]["id"] in problems[0]
+    assert "latency" in problems[0]
+
+
+@pytest.mark.parametrize("latency", [1, 0.25, 1e-300, 1e308])
+def test_reader_preserves_positive_finite_measured_latencies(latency):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    records[(verify_jevbench.MODELS[0], "primary")][0]["score"]["total_ms"] = latency
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert problems == []
+
+
 @pytest.mark.parametrize("probabilities", [
     [math.nan, 0.5], [0.5, math.nan], [math.nan, math.nan],
     [math.inf, 0], [0, math.inf], [-math.inf, 1], [1, -math.inf],
@@ -225,3 +250,35 @@ def test_reader_does_not_import_the_analysis_package():
     source = inspect.getsource(verify_jevbench)
     assert "import jevbench" not in source and "from jevbench" not in source, (
         "the independent reader must not reuse the analysis package it checks")
+
+
+@pytest.mark.parametrize("raw_latency,valid", [
+    ("1", True), ("0.25", True), ("1e-300", True), ("1e308", True),
+    ("NaN", False), ("Infinity", False), ("-Infinity", False),
+    ("1e309", False), (str(10**400), False), ("0", False), ("-1", False),
+    ("true", False), ("false", False), ("null", False), ('"10"', False),
+    ("[]", False), ("{}", False),
+])
+def test_cli_rejects_invalid_latencies_without_deriving_summary(cli_evidence, raw_latency, valid):
+    incoming, fixture, evaluation, out = cli_evidence
+    path = incoming / "jev16-shard-00" / "results" / verify_jevbench.MODELS[0] / "predictions.jsonl"
+    path.write_text(path.read_text().replace('"total_ms": 10.0', f'"total_ms": {raw_latency}', 1))
+    completed = subprocess.run([
+        sys.executable, str(Path(verify_jevbench.__file__).resolve()),
+        "--incoming", str(incoming), "--fixture", str(fixture),
+        "--evaluation", str(evaluation), "--out", str(out),
+    ], capture_output=True, text=True, check=False)
+    assert completed.returncode == (0 if valid else 1), completed.stdout + completed.stderr
+    assert "Traceback" not in completed.stderr
+    # The report must remain standard JSON even for exponent-overflow inputs.
+    report = json.loads((out / "independent_native.json").read_text(),
+                        parse_constant=lambda value: pytest.fail(f"non-finite report value: {value}"))
+    if valid:
+        assert report["problems"] == []
+        assert report["summary"]
+    else:
+        assert len(report["problems"]) == 1
+        assert "nanojev" in report["problems"][0] and "boolq:synthetic-0" in report["problems"][0]
+        assert "latency" in report["problems"][0]
+        assert report["summary"] == []
+        assert "independent re-derivation found no contract problem" not in completed.stdout
