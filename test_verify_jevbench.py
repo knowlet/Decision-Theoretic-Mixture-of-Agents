@@ -264,7 +264,7 @@ def test_reader_does_not_import_the_analysis_package():
 
 @pytest.mark.parametrize("field,value", [
     ("dataset", "ocnli"), ("dataset", "unknown"), ("dataset", None),
-    ("role", "train"), ("role", "validation"), ("role", None),
+    ("role", "fit"), ("role", "dev"), ("role", None),
 ])
 def test_reader_refuses_changed_cohort_metadata(field, value):
     row, gold, manifest, manifest_eval, records = synthetic()
@@ -280,7 +280,7 @@ def test_reader_refuses_changed_cohort_metadata(field, value):
     assert field in problems[0] and "boolq:abc" in problems[0]
 
 
-@pytest.mark.parametrize("field,value", [("dataset", "ocnli"), ("role", "train")])
+@pytest.mark.parametrize("field,value", [("dataset", "ocnli"), ("role", "fit")])
 def test_cli_refuses_relabelled_cohorts_without_deriving_summary(cli_evidence, field, value):
     incoming, fixture, evaluation, out = cli_evidence
     path = incoming / "jev16-shard-00" / "results" / verify_jevbench.MODELS[0] / "predictions.jsonl"
@@ -301,8 +301,8 @@ def test_cli_refuses_relabelled_cohorts_without_deriving_summary(cli_evidence, f
     assert report["summary"] == []
 
 
-@pytest.mark.parametrize("dataset,role", [("boolq", "test"), ("ocnli", "train"),
-                                         ("clinc", "validation"), ("tmmluplus", "test")])
+@pytest.mark.parametrize("dataset", verify_jevbench.DATASETS)
+@pytest.mark.parametrize("role", ["fit", "dev", "test"])
 def test_reader_preserves_matching_fixture_cohorts(dataset, role):
     row, gold, manifest, manifest_eval, records = synthetic()
     row.update(dataset=dataset, role=role)
