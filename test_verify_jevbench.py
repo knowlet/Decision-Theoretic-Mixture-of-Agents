@@ -138,6 +138,16 @@ def test_reader_preserves_positive_finite_measured_latencies(latency):
     assert problems == []
 
 
+@pytest.mark.parametrize("field,diagnostic", [("probabilities", "probabilit"), ("total_ms", "latency")])
+def test_reader_refuses_missing_score_fields(field, diagnostic):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    records[(verify_jevbench.MODELS[0], "primary")][0]["score"].pop(field)
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert len(problems) == 1 and diagnostic in problems[0]
+
+
 @pytest.mark.parametrize("probabilities", [
     [math.nan, 0.5], [0.5, math.nan], [math.nan, math.nan],
     [math.inf, 0], [0, math.inf], [-math.inf, 1], [1, -math.inf],
@@ -282,3 +292,22 @@ def test_cli_rejects_invalid_latencies_without_deriving_summary(cli_evidence, ra
         assert "latency" in report["problems"][0]
         assert report["summary"] == []
         assert "independent re-derivation found no contract problem" not in completed.stdout
+
+
+@pytest.mark.parametrize("serialized_field,diagnostic", [
+    ('"probabilities": [0.2, 0.8], ', "probabilit"), ('"total_ms": 10.0, ', "latency"),
+])
+def test_cli_rejects_missing_score_fields_without_deriving_summary(cli_evidence, serialized_field, diagnostic):
+    incoming, fixture, evaluation, out = cli_evidence
+    path = incoming / "jev16-shard-00" / "results" / verify_jevbench.MODELS[0] / "predictions.jsonl"
+    path.write_text(path.read_text().replace(serialized_field, "", 1))
+    completed = subprocess.run([
+        sys.executable, str(Path(verify_jevbench.__file__).resolve()),
+        "--incoming", str(incoming), "--fixture", str(fixture),
+        "--evaluation", str(evaluation), "--out", str(out),
+    ], capture_output=True, text=True, check=False)
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "Traceback" not in completed.stderr
+    report = json.loads((out / "independent_native.json").read_text())
+    assert len(report["problems"]) == 1 and diagnostic in report["problems"][0]
+    assert report["summary"] == []

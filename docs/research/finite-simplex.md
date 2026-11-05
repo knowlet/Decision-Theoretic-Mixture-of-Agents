@@ -1,7 +1,7 @@
 # Independent reader probability validation
 
 Scope: offline CPU verifier correctness on PR #4, starting at
-`2281caf496fb26c9c32d7c195044cc31e1659260` (2026-10-21).
+`2281caf496fb26c9c32d7c195044cc31e1659260` (2026-10-18).
 
 ## Evidence and decision
 

@@ -134,7 +134,7 @@ def check_contracts(requests, gold, manifest, manifest_eval, records, problems, 
             option_ids = [option["id"] for option in row["request"]["options"]]
             if score["option_ids"] != option_ids:
                 problems.append(f"{model}: option order changed for {rid}")
-            probabilities = score["probabilities"]
+            probabilities = score.get("probabilities")
             if not isinstance(probabilities, (list, tuple)):
                 problems.append(f"{model}: probabilities are not a simplex for {rid}")
             elif len(probabilities) != len(option_ids):
