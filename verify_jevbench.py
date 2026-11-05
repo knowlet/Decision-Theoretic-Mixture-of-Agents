@@ -18,6 +18,7 @@ DATASETS = ("boolq", "ocnli", "clinc", "tmmluplus")
 EXPECTED_PRIMARY = 320
 EXPECTED_REVERSE = 16
 EXPECTED_REPEAT = 8
+EXPECTED_COHORT_SIZES = {"fit": 32, "dev": 16, "test": 32}
 
 
 def sha256_file(path: pathlib.Path) -> str:
@@ -96,6 +97,25 @@ def _is_positive_finite_number(value):
         return False
 
 
+def check_fixture_cohorts(requests, problems):
+    """Check the fixed v1.6 dataset/role contract independently of predictions."""
+    counts = {(dataset, role): 0 for dataset in DATASETS for role in EXPECTED_COHORT_SIZES}
+    for index, row in enumerate(requests):
+        dataset, role = row.get("dataset"), row.get("role")
+        valid_dataset = isinstance(dataset, str) and dataset in DATASETS
+        valid_role = isinstance(role, str) and role in EXPECTED_COHORT_SIZES
+        if not valid_dataset:
+            problems.append(f"fixture row {index}: invalid dataset")
+        if not valid_role:
+            problems.append(f"fixture row {index}: invalid role")
+        if valid_dataset and valid_role:
+            counts[(dataset, role)] += 1
+    for (dataset, role), count in counts.items():
+        expected = EXPECTED_COHORT_SIZES[role]
+        if count != expected:
+            problems.append(f"fixture {dataset}/{role}: {count} cases, expected {expected}")
+
+
 def check_contracts(requests, gold, manifest, manifest_eval, records, problems, expected=None):
     """Fixture digests, coverage, and per-record probability contracts."""
     expected = expected or {"primary": EXPECTED_PRIMARY, "reverse": EXPECTED_REVERSE, "repeat": EXPECTED_REPEAT}
@@ -134,7 +154,7 @@ def check_contracts(requests, gold, manifest, manifest_eval, records, problems, 
             # Cohort labels live outside the hashed request payload. Bind them
             # to the fixture before they can select or group summary records.
             for field in ("dataset", "role"):
-                if record.get(field) != row[field]:
+                if record.get(field) != row.get(field):
                     problems.append(f"{model}: {field} differs from fixture for {rid}")
             option_ids = [option["id"] for option in row["request"]["options"]]
             if score["option_ids"] != option_ids:
@@ -206,6 +226,7 @@ def run(incoming: pathlib.Path, fixture: pathlib.Path, evaluation: pathlib.Path,
     if sha256_file(evaluation / "gold.jsonl") != manifest_eval["gold_sha256"]:
         problems.append("gold.jsonl does not match its manifest digest")
     records, shards = collect_records(incoming)
+    check_fixture_cohorts(requests, problems)
     check_contracts(requests, gold, manifest, manifest_eval, records, problems)
     summary = summarise(native_rows(requests, gold, records)) if not problems else []
     out.mkdir(parents=True, exist_ok=True)

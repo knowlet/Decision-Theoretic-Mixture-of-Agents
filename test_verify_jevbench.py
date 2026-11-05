@@ -189,12 +189,14 @@ def cli_evidence(tmp_path):
     requests, labels, primary = [], [], []
     for index in range(verify_jevbench.EXPECTED_PRIMARY):
         request = dict(row["request"], id=f"boolq:synthetic-{index}")
-        request_row = dict(row, request=request, sha256=digest(request))
+        dataset = verify_jevbench.DATASETS[index // 80]
+        role = "test" if index % 80 < 32 else "fit" if index % 80 < 64 else "dev"
+        request_row = dict(row, request=request, sha256=digest(request), dataset=dataset, role=role)
         requests.append(request_row)
-        labels.append(dict(gold[0], id=request["id"]))
+        labels.append(dict(gold[0], id=request["id"], dataset=dataset, role=role))
         record = records[(verify_jevbench.MODELS[0], "primary")][0]
         primary.append(dict(record, request_sha256=request_row["sha256"],
-                            score=dict(record["score"], id=request["id"])))
+                            score=dict(record["score"], id=request["id"]), dataset=dataset, role=role))
 
     def write_jsonl(path, rows):
         path.write_text("".join(json.dumps(item) + "\n" for item in rows))
@@ -313,6 +315,56 @@ def test_reader_preserves_matching_fixture_cohorts(dataset, role):
     check_contracts([row], gold, manifest, manifest_eval, records, problems,
                     expected={"primary": 1, "reverse": 0, "repeat": 0})
     assert problems == []
+
+
+@pytest.mark.parametrize("field,value", [("role", "validation"), ("role", "fit"),
+                                         ("role", None), ("role", []), ("role", {}),
+                                         ("dataset", "unknown"), ("dataset", "ocnli"),
+                                         ("dataset", None), ("dataset", []), ("dataset", {})])
+def test_cli_refuses_invalid_fixture_cohorts_even_when_predictions_match(cli_evidence, field, value):
+    incoming, fixture, evaluation, out = cli_evidence
+    # Keep manifest digests and every prediction's metadata consistent. The
+    # fixture must still obey the independent reader's fixed v1.6 contract.
+    for directory, filename, digest_field in [(fixture, "requests.jsonl", "requests_sha256"),
+                                               (evaluation, "gold.jsonl", "gold_sha256")]:
+        path = directory / filename
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        if value is None:
+            rows[0].pop(field)
+        else:
+            rows[0][field] = value
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        manifest_path = directory / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest[digest_field] = verify_jevbench.sha256_file(path)
+        manifest_path.write_text(json.dumps(manifest))
+    for model in verify_jevbench.MODELS:
+        path = incoming / "jev16-shard-00" / "results" / model / "predictions.jsonl"
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        if value is None:
+            rows[0].pop(field)
+        else:
+            rows[0][field] = value
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    completed = subprocess.run([
+        sys.executable, str(Path(verify_jevbench.__file__).resolve()),
+        "--incoming", str(incoming), "--fixture", str(fixture),
+        "--evaluation", str(evaluation), "--out", str(out),
+    ], capture_output=True, text=True, check=False)
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "Traceback" not in completed.stderr
+    report = json.loads((out / "independent_native.json").read_text())
+    assert report["problems"] and report["summary"] == []
+
+
+def test_complete_fixture_reports_all_held_out_cohorts(cli_evidence):
+    incoming, fixture, evaluation, out = cli_evidence
+    assert verify_jevbench.run(incoming, fixture, evaluation, out) == 0
+    report = json.loads((out / "independent_native.json").read_text())
+    assert report["problems"] == []
+    assert len(report["summary"]) == 15
+    for row in report["summary"]:
+        assert row["n"] == (128 if row["dataset"] == "ALL" else 32)
 
 
 @pytest.mark.parametrize("raw_latency,valid", [
