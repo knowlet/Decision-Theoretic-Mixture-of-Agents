@@ -121,6 +121,8 @@ def check_contracts(requests, gold, manifest, manifest_eval, records, problems, 
     expected = expected or {"primary": EXPECTED_PRIMARY, "reverse": EXPECTED_REVERSE, "repeat": EXPECTED_REPEAT}
     by_id = {row["request"]["id"]: row for row in requests}
     gold_by_id = {row["id"]: row for row in gold}
+    if len(gold_by_id) != len(gold):
+        problems.append("duplicate gold request ids")
     if len(by_id) != expected["primary"] or manifest["cases"] != expected["primary"]:
         problems.append(f"fixture has {len(by_id)} unique requests covering {manifest['cases']} cases, expected {expected['primary']}")
     if set(by_id) != set(gold_by_id):

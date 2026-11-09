@@ -416,3 +416,27 @@ def test_cli_rejects_missing_score_fields_without_deriving_summary(cli_evidence,
     report = json.loads((out / "independent_native.json").read_text())
     assert len(report["problems"]) == 1 and diagnostic in report["problems"][0]
     assert report["summary"] == []
+
+@pytest.mark.parametrize('label', ['yes', 'no'])
+def test_reader_rejects_duplicate_gold_ids(label):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    gold.append(dict(gold[0], label=label))
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={'primary': 1, 'reverse': 0, 'repeat': 0})
+    assert any('duplicate gold' in p for p in problems)
+
+
+def test_run_refuses_duplicate_gold_without_deriving_summary(cli_evidence):
+    incoming, fixture, evaluation, out = cli_evidence
+    path = evaluation / 'gold.jsonl'
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    rows.append(dict(rows[0], label='no', gold_index=0))
+    path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    (evaluation / 'manifest.json').write_text(json.dumps({
+        'gold_sha256': verify_jevbench.sha256_file(path)}))
+    result = verify_jevbench.run(incoming, fixture, evaluation, out)
+    report = json.loads((out / 'independent_native.json').read_text())
+    assert result == 1
+    assert any('duplicate gold' in p for p in report['problems'])
+    assert report['summary'] == []
