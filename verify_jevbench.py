@@ -18,6 +18,7 @@ DATASETS = ("boolq", "ocnli", "clinc", "tmmluplus")
 EXPECTED_PRIMARY = 320
 EXPECTED_REVERSE = 16
 EXPECTED_REPEAT = 8
+EXPECTED_COHORT_SIZES = {"fit": 32, "dev": 16, "test": 32}
 
 
 def sha256_file(path: pathlib.Path) -> str:
@@ -74,11 +75,54 @@ def collect_records(incoming: pathlib.Path):
     return found, shards
 
 
+def _is_probability_simplex(probabilities):
+    """Reject invalid numbers before arithmetic; keep the existing sum tolerance."""
+    try:
+        return bool(probabilities) and all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and value >= 0 for value in probabilities
+        ) and abs(sum(probabilities) - 1) <= 1e-6
+    except OverflowError:
+        # JSON integers can exceed the range accepted by math.isfinite/sum.
+        return False
+
+
+def _is_positive_finite_number(value):
+    """Treat malformed timing evidence as a contract failure, not an exception."""
+    try:
+        return (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and math.isfinite(value) and value > 0)
+    except OverflowError:
+        # JSON integers can exceed the range accepted by math.isfinite.
+        return False
+
+
+def check_fixture_cohorts(requests, problems):
+    """Check the fixed v1.6 dataset/role contract independently of predictions."""
+    counts = {(dataset, role): 0 for dataset in DATASETS for role in EXPECTED_COHORT_SIZES}
+    for index, row in enumerate(requests):
+        dataset, role = row.get("dataset"), row.get("role")
+        valid_dataset = isinstance(dataset, str) and dataset in DATASETS
+        valid_role = isinstance(role, str) and role in EXPECTED_COHORT_SIZES
+        if not valid_dataset:
+            problems.append(f"fixture row {index}: invalid dataset")
+        if not valid_role:
+            problems.append(f"fixture row {index}: invalid role")
+        if valid_dataset and valid_role:
+            counts[(dataset, role)] += 1
+    for (dataset, role), count in counts.items():
+        expected = EXPECTED_COHORT_SIZES[role]
+        if count != expected:
+            problems.append(f"fixture {dataset}/{role}: {count} cases, expected {expected}")
+
+
 def check_contracts(requests, gold, manifest, manifest_eval, records, problems, expected=None):
     """Fixture digests, coverage, and per-record probability contracts."""
     expected = expected or {"primary": EXPECTED_PRIMARY, "reverse": EXPECTED_REVERSE, "repeat": EXPECTED_REPEAT}
     by_id = {row["request"]["id"]: row for row in requests}
     gold_by_id = {row["id"]: row for row in gold}
+    if len(gold_by_id) != len(gold):
+        problems.append("duplicate gold request ids")
     if len(by_id) != expected["primary"] or manifest["cases"] != expected["primary"]:
         problems.append(f"fixture has {len(by_id)} unique requests covering {manifest['cases']} cases, expected {expected['primary']}")
     if set(by_id) != set(gold_by_id):
@@ -109,18 +153,27 @@ def check_contracts(requests, gold, manifest, manifest_eval, records, problems, 
                 continue
             if record["request_sha256"] != digest(row["request"]):
                 problems.append(f"{model}: request hash mismatch for {rid}")
+            # Cohort labels live outside the hashed request payload. Bind them
+            # to the fixture before they can select or group summary records.
+            for field in ("dataset", "role"):
+                if field not in record:
+                    problems.append(f"{model}: {field} missing from record for {rid}")
+                elif record[field] != row.get(field):
+                    problems.append(f"{model}: {field} differs from fixture for {rid}")
             option_ids = [option["id"] for option in row["request"]["options"]]
             if score["option_ids"] != option_ids:
                 problems.append(f"{model}: option order changed for {rid}")
-            probabilities = score["probabilities"]
-            if len(probabilities) != len(option_ids):
+            probabilities = score.get("probabilities")
+            if not isinstance(probabilities, (list, tuple)):
+                problems.append(f"{model}: probabilities are not a simplex for {rid}")
+            elif len(probabilities) != len(option_ids):
                 problems.append(f"{model}: probability count mismatch for {rid}")
-            elif abs(sum(probabilities) - 1) > 1e-6 or min(probabilities) < 0:
+            elif not _is_probability_simplex(probabilities):
                 problems.append(f"{model}: probabilities are not a simplex for {rid}")
             if score.get("backbone_calls") != 1 or score.get("decode_steps") != 0:
                 problems.append(f"{model}: unexpected backbone calls or decode steps for {rid}")
-            if not (score.get("total_ms", 0) > 0):
-                problems.append(f"{model}: non-positive measured latency for {rid}")
+            if not _is_positive_finite_number(score.get("total_ms")):
+                problems.append(f"{model}: invalid measured latency for {rid}; expected a positive finite number")
         missing = [rid for rid in by_id if rid not in seen]
         if missing:
             problems.append(f"{model}: {len(missing)} requests without a primary record")
@@ -177,9 +230,9 @@ def run(incoming: pathlib.Path, fixture: pathlib.Path, evaluation: pathlib.Path,
     if sha256_file(evaluation / "gold.jsonl") != manifest_eval["gold_sha256"]:
         problems.append("gold.jsonl does not match its manifest digest")
     records, shards = collect_records(incoming)
+    check_fixture_cohorts(requests, problems)
     check_contracts(requests, gold, manifest, manifest_eval, records, problems)
-    rows = native_rows(requests, gold, records)
-    summary = summarise(rows)
+    summary = summarise(native_rows(requests, gold, records)) if not problems else []
     out.mkdir(parents=True, exist_ok=True)
     (out / "independent_native.json").write_text(json.dumps(
         {"version": "1.6.0", "reader": "verify_jevbench.py", "shards": len(shards),

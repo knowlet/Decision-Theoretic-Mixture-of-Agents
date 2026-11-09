@@ -4,7 +4,13 @@ All inputs here are synthetic: no shard artifact, checkpoint or network call is 
 tests pin the reader arithmetic and, just as important, that it still refuses tampered evidence.
 """
 import inspect
+import json
 import math
+from pathlib import Path
+import subprocess
+import sys
+
+import pytest
 import verify_jevbench
 from verify_jevbench import check_contracts, digest, native_rows, percentile, summarise, wilson
 
@@ -107,7 +113,343 @@ def test_reader_refuses_a_missing_primary_record():
     assert any("without a primary record" in p for p in problems)
 
 
+@pytest.mark.parametrize("latency", [
+    math.nan, math.inf, -math.inf, 0, -1, True, False, None, "10", [], {}, 10**400,
+])
+def test_reader_refuses_invalid_measured_latencies(latency):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    model = verify_jevbench.MODELS[0]
+    records[(model, "primary")][0]["score"]["total_ms"] = latency
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert len(problems) == 1
+    assert model in problems[0] and row["request"]["id"] in problems[0]
+    assert "latency" in problems[0]
+
+
+@pytest.mark.parametrize("latency", [1, 0.25, 1e-300, 1e308])
+def test_reader_preserves_positive_finite_measured_latencies(latency):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    records[(verify_jevbench.MODELS[0], "primary")][0]["score"]["total_ms"] = latency
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert problems == []
+
+
+@pytest.mark.parametrize("field,diagnostic", [("probabilities", "probabilit"), ("total_ms", "latency")])
+def test_reader_refuses_missing_score_fields(field, diagnostic):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    records[(verify_jevbench.MODELS[0], "primary")][0]["score"].pop(field)
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert len(problems) == 1 and diagnostic in problems[0]
+
+
+@pytest.mark.parametrize("probabilities", [
+    [math.nan, 0.5], [0.5, math.nan], [math.nan, math.nan],
+    [math.inf, 0], [0, math.inf], [-math.inf, 1], [1, -math.inf],
+    [math.inf, -math.inf], [math.inf, math.nan], [math.nan, -math.inf],
+    [1e308, 1e308], [10**400, 0], [10**400, 0.5],
+    [None, 1], ["0.2", 0.8], [False, True], [[0.2], 0.8],
+    {"0": 0, "1": 1}, None, "01", 1, [], [1],
+    [0.5, 0.6], [-1e-20, 1], [0.5, 0.500002],
+])
+def test_reader_refuses_invalid_probability_vectors(probabilities):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    model = verify_jevbench.MODELS[0]
+    records[(model, "primary")][0]["score"]["probabilities"] = probabilities
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert len(problems) == 1
+    assert model in problems[0] and row["request"]["id"] in problems[0]
+    assert "probabilit" in problems[0]
+
+
+@pytest.mark.parametrize("probabilities", [
+    [0, 1], [1, 0], [-0.0, 1.0], [0.2, 0.8], (0.2, 0.8),
+    [0.5, 0.5000005], [1.0000005, 0],
+])
+def test_reader_preserves_valid_probability_boundaries(probabilities):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    records[(verify_jevbench.MODELS[0], "primary")][0]["score"]["probabilities"] = probabilities
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert problems == []
+
+
+@pytest.fixture
+def cli_evidence(tmp_path):
+    """Small local evidence matching the CLI's unchanged coverage requirements."""
+    row, gold, _, _, records = synthetic()
+    requests, labels, primary = [], [], []
+    for index in range(verify_jevbench.EXPECTED_PRIMARY):
+        request = dict(row["request"], id=f"boolq:synthetic-{index}")
+        dataset = verify_jevbench.DATASETS[index // 80]
+        role = "test" if index % 80 < 32 else "fit" if index % 80 < 64 else "dev"
+        request_row = dict(row, request=request, sha256=digest(request), dataset=dataset, role=role)
+        requests.append(request_row)
+        labels.append(dict(gold[0], id=request["id"], dataset=dataset, role=role))
+        record = records[(verify_jevbench.MODELS[0], "primary")][0]
+        primary.append(dict(record, request_sha256=request_row["sha256"],
+                            score=dict(record["score"], id=request["id"]), dataset=dataset, role=role))
+
+    def write_jsonl(path, rows):
+        path.write_text("".join(json.dumps(item) + "\n" for item in rows))
+
+    fixture, evaluation, incoming = (tmp_path / name for name in ("fixture", "evaluation", "incoming"))
+    fixture.mkdir()
+    evaluation.mkdir()
+    write_jsonl(fixture / "requests.jsonl", requests)
+    write_jsonl(evaluation / "gold.jsonl", labels)
+    (fixture / "manifest.json").write_text(json.dumps({
+        "cases": len(requests), "requests_sha256": verify_jevbench.sha256_file(fixture / "requests.jsonl")}))
+    (evaluation / "manifest.json").write_text(json.dumps({
+        "gold_sha256": verify_jevbench.sha256_file(evaluation / "gold.jsonl")}))
+    probes = [dict(primary[0], kind=kind)
+              for kind, count in (("reverse", verify_jevbench.EXPECTED_REVERSE),
+                                  ("repeat", verify_jevbench.EXPECTED_REPEAT))
+              for _ in range(count)]
+    for shard in range(12):
+        for model in verify_jevbench.MODELS:
+            path = incoming / f"jev16-shard-{shard:02d}" / "results" / model / "predictions.jsonl"
+            path.parent.mkdir(parents=True)
+            write_jsonl(path, primary + probes if shard == 0 else [])
+    return incoming, fixture, evaluation, tmp_path / "out"
+
+
+@pytest.mark.parametrize("raw_probabilities,valid", [
+    ("[0, 1]", True), ("[-0.0, 1.0]", True), ("[1.0000005, 0]", True),
+    ("[NaN, 0.5]", False), ("[0.5, NaN]", False),
+    ("[Infinity, 0]", False), ("[-Infinity, 1]", False),
+    ("[Infinity, NaN]", False), ("[NaN, -Infinity]", False),
+    ("[1e309, 0]", False), ("[0, -1e309]", False),
+    ("null", False), ('["0.2", 0.8]', False), ("[false, true]", False),
+    ('{"0": 0, "1": 1}', False), ("[]", False),
+])
+def test_cli_rejects_invalid_probabilities_without_deriving_summary(cli_evidence, raw_probabilities, valid):
+    incoming, fixture, evaluation, out = cli_evidence
+    path = incoming / "jev16-shard-00" / "results" / verify_jevbench.MODELS[0] / "predictions.jsonl"
+    original = path.read_text()
+    path.write_text(original.replace('"probabilities": [0.2, 0.8]',
+                                     f'"probabilities": {raw_probabilities}', 1))
+    completed = subprocess.run([
+        sys.executable, str(Path(verify_jevbench.__file__).resolve()),
+        "--incoming", str(incoming), "--fixture", str(fixture),
+        "--evaluation", str(evaluation), "--out", str(out),
+    ], capture_output=True, text=True, check=False)
+    assert completed.returncode == (0 if valid else 1), completed.stdout + completed.stderr
+    assert "Traceback" not in completed.stderr
+    report = json.loads((out / "independent_native.json").read_text())
+    assert report["shards"] == 12 and report["primary_records"] == 960
+    assert report["probe_records"] == 72
+    if valid:
+        assert report["problems"] == []
+        assert report["summary"]
+        assert "independent re-derivation found no contract problem" in completed.stdout
+    else:
+        assert len(report["problems"]) == 1
+        assert "nanojev" in report["problems"][0] and "boolq:synthetic-0" in report["problems"][0]
+        assert report["summary"] == []
+        assert "independent re-derivation found no contract problem" not in completed.stdout
+
+
 def test_reader_does_not_import_the_analysis_package():
     source = inspect.getsource(verify_jevbench)
     assert "import jevbench" not in source and "from jevbench" not in source, (
         "the independent reader must not reuse the analysis package it checks")
+
+
+@pytest.mark.parametrize("field,value", [
+    ("dataset", "ocnli"), ("dataset", "unknown"), ("dataset", None),
+    ("role", "fit"), ("role", "dev"), ("role", None),
+])
+def test_reader_refuses_changed_cohort_metadata(field, value):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    record = records[(verify_jevbench.MODELS[0], "primary")][0]
+    if value is None:
+        record.pop(field)
+    else:
+        record[field] = value
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert len(problems) == 1
+    assert field in problems[0] and "boolq:abc" in problems[0]
+
+
+@pytest.mark.parametrize("field,value", [("dataset", "ocnli"), ("role", "fit")])
+def test_cli_refuses_relabelled_cohorts_without_deriving_summary(cli_evidence, field, value):
+    incoming, fixture, evaluation, out = cli_evidence
+    path = incoming / "jev16-shard-00" / "results" / verify_jevbench.MODELS[0] / "predictions.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    # A wrong answer must not disappear from the test cohort or move datasets.
+    rows[0]["score"]["probabilities"] = [0.8, 0.2]
+    rows[0][field] = value
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    completed = subprocess.run([
+        sys.executable, str(Path(verify_jevbench.__file__).resolve()),
+        "--incoming", str(incoming), "--fixture", str(fixture),
+        "--evaluation", str(evaluation), "--out", str(out),
+    ], capture_output=True, text=True, check=False)
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "Traceback" not in completed.stderr
+    report = json.loads((out / "independent_native.json").read_text())
+    assert len(report["problems"]) == 1 and field in report["problems"][0]
+    assert report["summary"] == []
+
+
+@pytest.mark.parametrize("dataset", verify_jevbench.DATASETS)
+@pytest.mark.parametrize("role", ["fit", "dev", "test"])
+def test_reader_preserves_matching_fixture_cohorts(dataset, role):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    row.update(dataset=dataset, role=role)
+    gold[0].update(dataset=dataset, role=role)
+    for model in verify_jevbench.MODELS:
+        records[(model, "primary")][0].update(dataset=dataset, role=role)
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={"primary": 1, "reverse": 0, "repeat": 0})
+    assert problems == []
+
+
+@pytest.mark.parametrize("field,value", [("role", "validation"), ("role", "fit"),
+                                         ("role", None), ("role", []), ("role", {}),
+                                         ("dataset", "unknown"), ("dataset", "ocnli"),
+                                         ("dataset", None), ("dataset", []), ("dataset", {})])
+def test_cli_refuses_invalid_fixture_cohorts_even_when_predictions_match(cli_evidence, field, value):
+    incoming, fixture, evaluation, out = cli_evidence
+    # Keep manifest digests and every prediction's metadata consistent. The
+    # fixture must still obey the independent reader's fixed v1.6 contract.
+    for directory, filename, digest_field in [(fixture, "requests.jsonl", "requests_sha256"),
+                                               (evaluation, "gold.jsonl", "gold_sha256")]:
+        path = directory / filename
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        if value is None:
+            rows[0].pop(field)
+        else:
+            rows[0][field] = value
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        manifest_path = directory / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest[digest_field] = verify_jevbench.sha256_file(path)
+        manifest_path.write_text(json.dumps(manifest))
+    for model in verify_jevbench.MODELS:
+        path = incoming / "jev16-shard-00" / "results" / model / "predictions.jsonl"
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        if value is None:
+            rows[0].pop(field)
+        else:
+            rows[0][field] = value
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    completed = subprocess.run([
+        sys.executable, str(Path(verify_jevbench.__file__).resolve()),
+        "--incoming", str(incoming), "--fixture", str(fixture),
+        "--evaluation", str(evaluation), "--out", str(out),
+    ], capture_output=True, text=True, check=False)
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "Traceback" not in completed.stderr
+    report = json.loads((out / "independent_native.json").read_text())
+    assert report["problems"] and report["summary"] == []
+
+
+def test_complete_fixture_reports_all_held_out_cohorts(cli_evidence):
+    incoming, fixture, evaluation, out = cli_evidence
+    assert verify_jevbench.run(incoming, fixture, evaluation, out) == 0
+    report = json.loads((out / "independent_native.json").read_text())
+    assert report["problems"] == []
+    assert len(report["summary"]) == 15
+    for row in report["summary"]:
+        assert row["n"] == (128 if row["dataset"] == "ALL" else 32)
+
+
+@pytest.mark.parametrize("raw_latency,valid", [
+    ("1", True), ("0.25", True), ("1e-300", True), ("1e308", True),
+    ("NaN", False), ("Infinity", False), ("-Infinity", False),
+    ("1e309", False), (str(10**400), False), ("0", False), ("-1", False),
+    ("true", False), ("false", False), ("null", False), ('"10"', False),
+    ("[]", False), ("{}", False),
+])
+def test_cli_rejects_invalid_latencies_without_deriving_summary(cli_evidence, raw_latency, valid):
+    incoming, fixture, evaluation, out = cli_evidence
+    path = incoming / "jev16-shard-00" / "results" / verify_jevbench.MODELS[0] / "predictions.jsonl"
+    path.write_text(path.read_text().replace('"total_ms": 10.0', f'"total_ms": {raw_latency}', 1))
+    completed = subprocess.run([
+        sys.executable, str(Path(verify_jevbench.__file__).resolve()),
+        "--incoming", str(incoming), "--fixture", str(fixture),
+        "--evaluation", str(evaluation), "--out", str(out),
+    ], capture_output=True, text=True, check=False)
+    assert completed.returncode == (0 if valid else 1), completed.stdout + completed.stderr
+    assert "Traceback" not in completed.stderr
+    # The report must remain standard JSON even for exponent-overflow inputs.
+    report = json.loads((out / "independent_native.json").read_text(),
+                        parse_constant=lambda value: pytest.fail(f"non-finite report value: {value}"))
+    if valid:
+        assert report["problems"] == []
+        assert report["summary"]
+    else:
+        assert len(report["problems"]) == 1
+        assert "nanojev" in report["problems"][0] and "boolq:synthetic-0" in report["problems"][0]
+        assert "latency" in report["problems"][0]
+        assert report["summary"] == []
+        assert "independent re-derivation found no contract problem" not in completed.stdout
+
+
+@pytest.mark.parametrize("serialized_field,diagnostic", [
+    ('"probabilities": [0.2, 0.8], ', "probabilit"), ('"total_ms": 10.0, ', "latency"),
+])
+def test_cli_rejects_missing_score_fields_without_deriving_summary(cli_evidence, serialized_field, diagnostic):
+    incoming, fixture, evaluation, out = cli_evidence
+    path = incoming / "jev16-shard-00" / "results" / verify_jevbench.MODELS[0] / "predictions.jsonl"
+    path.write_text(path.read_text().replace(serialized_field, "", 1))
+    completed = subprocess.run([
+        sys.executable, str(Path(verify_jevbench.__file__).resolve()),
+        "--incoming", str(incoming), "--fixture", str(fixture),
+        "--evaluation", str(evaluation), "--out", str(out),
+    ], capture_output=True, text=True, check=False)
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "Traceback" not in completed.stderr
+    report = json.loads((out / "independent_native.json").read_text())
+    assert len(report["problems"]) == 1 and diagnostic in report["problems"][0]
+    assert report["summary"] == []
+
+@pytest.mark.parametrize('label', ['yes', 'no'])
+def test_reader_rejects_duplicate_gold_ids(label):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    gold.append(dict(gold[0], label=label))
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={'primary': 1, 'reverse': 0, 'repeat': 0})
+    assert any('duplicate gold' in p for p in problems)
+
+
+def test_run_refuses_duplicate_gold_without_deriving_summary(cli_evidence):
+    incoming, fixture, evaluation, out = cli_evidence
+    path = evaluation / 'gold.jsonl'
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    rows.append(dict(rows[0], label='no', gold_index=0))
+    path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    (evaluation / 'manifest.json').write_text(json.dumps({
+        'gold_sha256': verify_jevbench.sha256_file(path)}))
+    result = verify_jevbench.run(incoming, fixture, evaluation, out)
+    report = json.loads((out / 'independent_native.json').read_text())
+    assert result == 1
+    assert any('duplicate gold' in p for p in report['problems'])
+    assert report['summary'] == []
+
+@pytest.mark.parametrize('field', ['dataset', 'role'])
+@pytest.mark.parametrize('fixture_missing', [False, True])
+def test_reader_reports_missing_record_cohort_field(field, fixture_missing):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    model = verify_jevbench.MODELS[0]
+    records[(model, 'primary')][0].pop(field)
+    if fixture_missing:
+        row.pop(field)
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={'primary': 1, 'reverse': 0, 'repeat': 0})
+    assert any(f'{model}: {field} missing from record' in p for p in problems)
