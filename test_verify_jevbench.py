@@ -440,3 +440,16 @@ def test_run_refuses_duplicate_gold_without_deriving_summary(cli_evidence):
     assert result == 1
     assert any('duplicate gold' in p for p in report['problems'])
     assert report['summary'] == []
+
+@pytest.mark.parametrize('field', ['dataset', 'role'])
+@pytest.mark.parametrize('fixture_missing', [False, True])
+def test_reader_reports_missing_record_cohort_field(field, fixture_missing):
+    row, gold, manifest, manifest_eval, records = synthetic()
+    model = verify_jevbench.MODELS[0]
+    records[(model, 'primary')][0].pop(field)
+    if fixture_missing:
+        row.pop(field)
+    problems = []
+    check_contracts([row], gold, manifest, manifest_eval, records, problems,
+                    expected={'primary': 1, 'reverse': 0, 'repeat': 0})
+    assert any(f'{model}: {field} missing from record' in p for p in problems)
